@@ -1,0 +1,6 @@
+{
+  "name": "Locket AI Server Studio",
+  "description": "Server tạo ảnh AI miễn phí và trình cấu hình MITM tích hợp cho Locket Gold (Shadowrocket, Loon, Surge).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
