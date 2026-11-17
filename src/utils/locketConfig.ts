@@ -26,9 +26,9 @@ export interface AiStylePreset {
   recommendedModel: FreeAiModel;
 }
 
-// Matches Locket AI & Filter endpoints across Cloud Functions v1/v2 & Locket API while excluding normal postMoment uploads
+// Matches Locket AI & Filter generation endpoints across Cloud Functions v1/v2 & Locket API while excluding read/config/analytics/moment endpoints (such as getFilters)
 export const DEFAULT_SHADOWROCKET_AI_PATTERN =
-  '^https:\\/\\/(.*locketcamera\\.com|.*cloudfunctions\\.net|.*-uc\\.a\\.run\\.app)\\/(?!.*(postMoment|getMoment|latestMoment|fetchUser|getUser|account|login|streak|reaction|chat|message|friend|telemetry|log)).*(ai|filter|generate|remix|style|customFilter|applyFilter|effect|magic|transform|edit|look|portrait|restyle|face|nano|gemini).*';
+  '^https:\\/\\/(api\\.locketcamera\\.com|.*cloudfunctions\\.net|.*-uc\\.a\\.run\\.app)\\/(?!.*(getFilters|get[A-Z]|fetch[A-Z]|list[A-Z]|set[A-Z]|update[A-Z]|delete[A-Z]|postMoment|rollcall|account|login|streak|reaction|chat|message|friend|telemetry|analytics|log)).*([Aa]pply[Ff]ilter|[Gg]enerate[Ff]ilter|[Cc]reate[Ff]ilter|[Cc]ustom[Ff]ilter|[Pp]rocess[Ff]ilter|[Rr]ender[Ff]ilter|[Cc]amera[Ff]ilter|[Mm]agic[Ff]ilter|[Aa][Ii][Ff]ilter|[Ff]ilter[Aa][Ii]|[Gg]enerate[Aa][Ii]|[Gg]enerate[Mm]agic|[Gg]enerate[Ii]mage|[Gg]enerate[Pp]hoto|[Aa][Ii][Gg]enerate|filters?\\/(apply|generate|create|process|render)|ai\\/(generate|image|filter|remix|transform)|[Tt]ransform[Ii]mage|[Rr]estyle|[Pp]hoto[Ee]ffect|[Aa]pply[Ee]ffect|remix|nano|gemini).*';
 
 export const LOCKET_FILTERS: LocketFilterPreset[] = [
   {
@@ -389,13 +389,10 @@ export function isValidServerUrl(rawUrl: string): boolean {
 export function generateMitmRedirectScript(serverUrl: string, client: ProxyClient): string {
   const cleanUrl = normalizeServerUrl(serverUrl) || 'https://your-free-locket-ai.onrender.com';
 
-  if (client === 'quantumultx') {
-    return `// ============================================================
-// Locket AI & Filter Free Server Redirect (Quantumult X)
-// Bắt request Filter/AI trong app Locket và chuyển sang server miễn phí
-// ============================================================
-
-const FREE_AI_SERVER = "${cleanUrl}/api/locket/ai-generate";
+  const guardSnippet = `const targetUrl = $request.url || "";
+const isSafePassthroughUrl =
+  /analytics\\.locketcamera\\.com/i.test(targetUrl) ||
+  /\\/(getFilters|postMoment|getMoment|latestMoment|setClientData|setNotificationToken|getRollcall|getGroup|fetchUser|getUser)/i.test(targetUrl);
 
 let rawBody = {};
 try {
@@ -404,37 +401,65 @@ try {
 
 const inner = rawBody && rawBody.data ? rawBody.data : rawBody;
 const isCallable = Boolean(rawBody && rawBody.data);
+const hasAiOrFilterPayload = Boolean(
+  inner && (
+    inner.prompt || inner.custom_prompt || inner.text || inner.caption ||
+    inner.filter_id || inner.filterId || inner.filter || inner.preset ||
+    inner.image_base64 || inner.image || inner.photo || inner.imageData ||
+    inner.image_url || inner.imageUrl || inner.source_image || inner.input_image
+  )
+);`;
 
-const req = {
-  url: FREE_AI_SERVER,
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "X-Locket-Proxy": "QuantumultX"
-  },
-  body: JSON.stringify({
-    prompt: inner.prompt || inner.custom_prompt || inner.text || inner.caption || "",
-    filter_id: inner.filter_id || inner.filterId || inner.filter || inner.style || "",
-    style: inner.style || "natural",
-    aspect_ratio: inner.aspect_ratio || "1:1",
-    image_base64: inner.image_base64 || inner.image || inner.photo || inner.imageData || "",
-    callable: isCallable,
-    original_url: $request.url
-  })
-};
+  if (client === 'quantumultx') {
+    return `// ============================================================
+// Locket AI & Filter Free Server Redirect (Quantumult X)
+// Bắt request Filter/AI trong app Locket và chuyển sang server miễn phí
+// Tự động bỏ qua getFilters / analytics / request không chứa filter hoặc prompt
+// ============================================================
 
-$task.fetch(req).then(
-  (response) => {
-    $done({
-      status: "HTTP/1.1 200 OK",
-      headers: { "Content-Type": "application/json" },
-      body: response.body
-    });
-  },
-  () => {
-    $done({});
-  }
-);
+const FREE_AI_SERVER = "${cleanUrl}/api/locket/ai-generate";
+
+${guardSnippet}
+
+if (isSafePassthroughUrl || !hasAiOrFilterPayload) {
+  $done({});
+} else {
+  const req = {
+    url: FREE_AI_SERVER,
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Locket-Proxy": "QuantumultX"
+    },
+    body: JSON.stringify({
+      prompt: inner.prompt || inner.custom_prompt || inner.text || inner.caption || "",
+      filter_id: inner.filter_id || inner.filterId || inner.filter || inner.preset || inner.style || "",
+      style: inner.style || "natural",
+      aspect_ratio: inner.aspect_ratio || "1:1",
+      image_base64: inner.image_base64 || inner.image || inner.photo || inner.imageData || "",
+      image_url: inner.image_url || inner.imageUrl || inner.source_image || inner.input_image || "",
+      callable: isCallable,
+      original_url: targetUrl
+    })
+  };
+
+  $task.fetch(req).then(
+    (response) => {
+      if (!response || (response.statusCode && response.statusCode >= 400) || !response.body) {
+        $done({});
+        return;
+      }
+      $done({
+        status: "HTTP/1.1 200 OK",
+        headers: { "Content-Type": "application/json" },
+        body: response.body
+      });
+    },
+    () => {
+      $done({});
+    }
+  );
+}
 `;
   }
 
@@ -442,50 +467,50 @@ $task.fetch(req).then(
 // Locket AI & Filter Free Server Redirect (${client.toUpperCase()})
 // Dùng trực tiếp tính năng Filter / Tạo ảnh AI ngay trong app Locket
 // Hỗ trợ Img2Img (ảnh selfie từ Locket + filter_id) & Firebase Callable
+// Tự động bỏ qua getFilters / analytics / request không chứa filter hoặc prompt
 // ============================================================
 
 const FREE_AI_SERVER = "${cleanUrl}/api/locket/ai-generate";
 
-let rawBody = {};
-try {
-  rawBody = $request.body ? JSON.parse($request.body) : {};
-} catch (e) {}
+${guardSnippet}
 
-// Tự động nhận diện Firebase httpsCallable ({ data: {...} }) hoặc REST JSON
-const inner = rawBody && rawBody.data ? rawBody.data : rawBody;
-const isCallable = Boolean(rawBody && rawBody.data);
+if (isSafePassthroughUrl || !hasAiOrFilterPayload) {
+  $done({});
+} else {
+  const requestOptions = {
+    url: FREE_AI_SERVER,
+    headers: {
+      "Content-Type": "application/json",
+      "X-Locket-Proxy": "${client}"
+    },
+    body: JSON.stringify({
+      prompt: inner.prompt || inner.custom_prompt || inner.text || inner.caption || "",
+      filter_id: inner.filter_id || inner.filterId || inner.filter || inner.preset || "",
+      style: inner.style || "natural",
+      aspect_ratio: inner.aspect_ratio || "1:1",
+      image_base64: inner.image_base64 || inner.image || inner.photo || inner.imageData || "",
+      image_url: inner.image_url || inner.imageUrl || inner.source_image || inner.input_image || "",
+      callable: isCallable,
+      original_url: targetUrl
+    }),
+    timeout: 45
+  };
 
-const requestOptions = {
-  url: FREE_AI_SERVER,
-  headers: {
-    "Content-Type": "application/json",
-    "X-Locket-Proxy": "${client}"
-  },
-  body: JSON.stringify({
-    prompt: inner.prompt || inner.custom_prompt || inner.text || inner.caption || "",
-    filter_id: inner.filter_id || inner.filterId || inner.filter || inner.preset || "",
-    style: inner.style || "natural",
-    aspect_ratio: inner.aspect_ratio || "1:1",
-    image_base64: inner.image_base64 || inner.image || inner.photo || inner.imageData || "",
-    callable: isCallable,
-    original_url: $request.url
-  }),
-  timeout: 45
-};
-
-$httpClient.post(requestOptions, function (error, response, data) {
-  if (error || !data) {
-    $done({});
-    return;
-  }
-  $done({
-    response: {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-      body: data
+  $httpClient.post(requestOptions, function (error, response, data) {
+    const statusCode = response && (response.status || response.statusCode || 200);
+    if (error || !data || statusCode >= 400) {
+      $done({});
+      return;
     }
+    $done({
+      response: {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+        body: data
+      }
+    });
   });
-});
+}
 `;
 }
 
@@ -500,7 +525,7 @@ const PROBE_URL = "${cleanUrl}/api/locket/mitm-probe";
 const targetUrl = $request.url || "";
 const ua = $request.headers["User-Agent"] || $request.headers["user-agent"] || "";
 
-if (!ua.includes("Locket") && !targetUrl.includes("locket")) {
+if (targetUrl.includes("analytics.locketcamera.com") || (!ua.includes("Locket") && !targetUrl.includes("locket"))) {
   $done({});
 } else {
   let keys = [];
@@ -517,6 +542,7 @@ if (!ua.includes("Locket") && !targetUrl.includes("locket")) {
       url: PROBE_URL,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        kind: "req",
         method: $request.method || "POST",
         url: targetUrl,
         keys: keys,
@@ -529,6 +555,48 @@ if (!ua.includes("Locket") && !targetUrl.includes("locket")) {
     }
   );
 }
+`;
+}
+
+export function generateResponseProbeScript(serverUrl: string): string {
+  const cleanUrl = normalizeServerUrl(serverUrl) || 'https://your-free-locket-ai.onrender.com';
+  return `// ============================================================
+// Locket Response Probe (Shadowrocket) — Đọc phản hồi getFilters / Filter API
+// Không sửa response ($done({})), chỉ gửi cấu trúc JSON về tab API & Nhật ký
+// ============================================================
+
+const PROBE_URL = "${cleanUrl}/api/locket/mitm-probe";
+const targetUrl = $request.url || "";
+const status = ($response && ($response.status || $response.statusCode)) || 0;
+const raw = ($response && $response.body) || "";
+
+let keys = [];
+try {
+  const parsed = raw ? JSON.parse(raw) : {};
+  const inner = parsed && parsed.result ? parsed.result : parsed;
+  if (inner && typeof inner === "object") {
+    keys = Object.keys(inner).slice(0, 12);
+  }
+} catch (e) {}
+
+$httpClient.post(
+  {
+    url: PROBE_URL,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      kind: "res",
+      status: status,
+      method: "RES",
+      url: targetUrl,
+      keys: keys,
+      bodyPreview: String(raw).slice(0, 380)
+    }),
+    timeout: 2
+  },
+  function () {
+    $done({});
+  }
+);
 `;
 }
 
@@ -613,18 +681,20 @@ FINAL,DIRECT
       `locket_rc = type=http-response, pattern=^https:\\/\\/firebaseremoteconfig\\.googleapis\\.com\\/v1\\/projects\\/locket-4252a\\/.+, script-path=${forceGoldSrc}, requires-body=true, max-size=-1, timeout=60`
     );
   }
+  if (options.enableTrafficProbe) {
+    scriptLines.push(
+      `locket_probe = type=http-request, pattern=^https:\\/\\/(?!analytics\\.).*(locketcamera\\.com|cloudfunctions\\.net|uc\\.a\\.run\\.app)\\/.*, script-path=${cleanServer}/scripts/locket_traffic_probe.js, requires-body=true, max-size=1048576, timeout=5`,
+      `locket_probe_res = type=http-response, pattern=^https:\\/\\/api\\.locketcamera\\.com\\/(getFilters|.*[Ff]ilter.*), script-path=${cleanServer}/scripts/locket_response_probe.js, requires-body=true, max-size=1048576, timeout=5`
+    );
+  }
   scriptLines.push(
     `locket_ai_free = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`
   );
-  if (options.enableTrafficProbe) {
-    scriptLines.push(
-      `locket_probe = type=http-request, pattern=^https:\\/\\/.*(locketcamera\\.com|cloudfunctions\\.net|uc\\.a\\.run\\.app)\\/.*, script-path=${cleanServer}/scripts/locket_traffic_probe.js, requires-body=true, max-size=1048576, timeout=5`
-    );
-  }
 
   const mitmHosts = [
     'api.revenuecat.com',
     'firebaseremoteconfig.googleapis.com',
+    '-analytics.locketcamera.com',
     'api.locketcamera.com',
     '*.locketcamera.com',
     'us-central1-locket-4252a.cloudfunctions.net',

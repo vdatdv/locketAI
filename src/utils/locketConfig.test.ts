@@ -38,7 +38,7 @@ test('buildEnhancedPrompt appends style suffix and filter instruction', () => {
   assert.ok(prompt.includes('Ghibli'));
 });
 
-test('DEFAULT_SHADOWROCKET_AI_PATTERN matches filter/AI endpoints without intercepting postMomentV2', () => {
+test('DEFAULT_SHADOWROCKET_AI_PATTERN matches filter/AI endpoints without intercepting getFilters or normal Locket RPCs', () => {
   const regex = new RegExp(DEFAULT_SHADOWROCKET_AI_PATTERN.replace(/\\\//g, '/'));
   assert.equal(
     regex.test('https://us-central1-locket-4252a.cloudfunctions.net/applyFilter'),
@@ -51,6 +51,30 @@ test('DEFAULT_SHADOWROCKET_AI_PATTERN matches filter/AI endpoints without interc
   assert.equal(
     regex.test('https://api.locketcamera.com/v1/ai/generate'),
     true
+  );
+  assert.equal(
+    regex.test('https://api.locketcamera.com/v1/filters/apply'),
+    true
+  );
+  assert.equal(
+    regex.test('https://api.locketcamera.com/getFilters'),
+    false
+  );
+  assert.equal(
+    regex.test('https://api.locketcamera.com/setClientData'),
+    false
+  );
+  assert.equal(
+    regex.test('https://api.locketcamera.com/getAccountDetails'),
+    false
+  );
+  assert.equal(
+    regex.test('https://api.locketcamera.com/getGroupMessages'),
+    false
+  );
+  assert.equal(
+    regex.test('https://analytics.locketcamera.com/2/httpapi'),
+    false
   );
   assert.equal(
     regex.test('https://api.locketcamera.com/postMomentV2'),
@@ -66,15 +90,18 @@ test('URL validation and normalization', () => {
   assert.equal(isValidServerUrl('not a url'), false);
 });
 
-test('generateMitmRedirectScript forwards filter_id and image_base64 for Shadowrocket', () => {
+test('generateMitmRedirectScript forwards filter_id and image_base64 and guards against getFilters/empty payload', () => {
   const srScript = generateMitmRedirectScript('https://free-ai.onrender.com/', 'shadowrocket');
   assert.ok(srScript.includes('https://free-ai.onrender.com/api/locket/ai-generate'));
   assert.ok(srScript.includes('filter_id'));
   assert.ok(srScript.includes('image_base64'));
   assert.ok(srScript.includes('rawBody.data'));
+  assert.ok(srScript.includes('isSafePassthroughUrl'));
+  assert.ok(srScript.includes('hasAiOrFilterPayload'));
+  assert.ok(srScript.includes('statusCode >= 400'));
 });
 
-test('generateMergedLocketConf includes Gold scripts, patched forceGold4.3 option, probe option, and AI filter rule', () => {
+test('generateMergedLocketConf includes Gold scripts, patched forceGold4.3 option, request+response probes, and -analytics exclusion', () => {
   const conf = generateMergedLocketConf('https://free-ai.onrender.com', 'shadowrocket', {
     includeYoutubeAdblock: true,
     includeGoldUnlock: true,
@@ -88,6 +115,8 @@ test('generateMergedLocketConf includes Gold scripts, patched forceGold4.3 optio
   assert.ok(conf.includes('https://free-ai.onrender.com/scripts/forceGold4.3.js'));
   assert.ok(conf.includes('locket_ai_free = type=http-request'));
   assert.ok(conf.includes('locket_probe = type=http-request'));
+  assert.ok(conf.includes('locket_probe_res = type=http-response'));
+  assert.ok(conf.includes('-analytics.locketcamera.com'));
   assert.ok(conf.includes('*-uc.a.run.app'));
   assert.ok(conf.includes('us-central1-locket-4252a.cloudfunctions.net'));
 });

@@ -7,6 +7,7 @@ import {
   buildEnhancedPrompt,
   generateMergedLocketConf,
   generateMitmRedirectScript,
+  generateResponseProbeScript,
   generateTrafficProbeScript,
   getDimensionsForAspectRatio,
   type AspectRatioOption,
@@ -325,13 +326,20 @@ async function handleGenerateRequest(req: Request, res: Response, endpointLabel:
   const hasFilter = Boolean(filterId && filterId !== 'none');
   if (!rawPrompt && !hasFilter) {
     const latencyMs = Date.now() - startedAt;
+    const bodyKeys = Object.keys(body).slice(0, 8).join(', ');
     recordLog({
       method: req.method,
       path: endpointLabel,
       status: 400,
       latencyMs,
       provider: 'validation',
-      detail: 'Empty prompt and filter_id rejected',
+      detail: [
+        'Empty prompt/filter_id',
+        originalUrl ? `from ${originalUrl.replace(/^https?:\/\//, '').slice(0, 70)}` : '',
+        bodyKeys ? `keys: [${bodyKeys}]` : '',
+      ]
+        .filter(Boolean)
+        .join(' · '),
     });
     return res.status(400).json({
       ok: false,
@@ -622,18 +630,52 @@ $done({ body: JSON.stringify(obj) });`;
     res.send(scriptBody);
   });
 
+  // Optional non-blocking Response Probe script to inspect getFilters / Filter API responses
+  app.get('/scripts/locket_response_probe.js', (req, res) => {
+    const startedAt = Date.now();
+    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    const host = req.headers.host || `localhost:${PORT}`;
+    const origin = `${proto}://${host}`;
+    const scriptBody = generateResponseProbeScript(origin);
+
+    recordLog({
+      method: 'GET',
+      path: '/scripts/locket_response_probe.js',
+      status: 200,
+      latencyMs: Date.now() - startedAt,
+      provider: 'script-host',
+      detail: 'Served passive Response Probe script',
+    });
+
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.send(scriptBody);
+  });
+
   app.post('/api/locket/mitm-probe', (req, res) => {
     const body = (req.body || {}) as Record<string, unknown>;
-    const method = String(body.method || 'POST');
+    const kind = String(body.kind || 'req');
+    const method = String(body.method || (kind === 'res' ? 'RES' : 'POST'));
+    const status = Number(body.status) || 200;
     const url = String(body.url || '').slice(0, 140);
     const keys = Array.isArray(body.keys) ? body.keys.join(', ') : '';
+    const preview =
+      kind === 'res' && body.bodyPreview
+        ? String(body.bodyPreview).replace(/\s+/g, ' ').slice(0, 220)
+        : '';
+
     recordLog({
       method,
       path: '/api/locket/mitm-probe',
-      status: 200,
+      status,
       latencyMs: 1,
-      provider: 'traffic-probe',
-      detail: `${url}${keys ? ` · keys: [${keys}]` : ''}`,
+      provider: kind === 'res' ? 'response-probe' : 'traffic-probe',
+      detail: [
+        url,
+        keys ? `keys: [${keys}]` : '',
+        preview ? `body: ${preview}` : '',
+      ]
+        .filter(Boolean)
+        .join(' · '),
     });
     res.json({ ok: true });
   });

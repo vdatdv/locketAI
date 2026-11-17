@@ -202,7 +202,7 @@ export function MitmConfigView({
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono text-slate-800 focus:border-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-600/20"
             />
             <p className="text-xs text-slate-500">
-              Mặc định tránh khớp <code className="font-mono">postMomentV2</code> để bạn vẫn đăng ảnh Locket bình thường.
+              Mặc định loại trừ <code className="font-mono">getFilters</code>, <code className="font-mono">postMomentV2</code> và <code className="font-mono">analytics</code> để Locket hoạt động bình thường.
             </p>
           </div>
 

@@ -405,7 +405,7 @@ export function ApiLogsView() {
                     <td className="py-2.5 px-4 text-right font-mono text-slate-700 tabular-nums whitespace-nowrap">
                       {entry.latencyMs}ms
                     </td>
-                    <td className="py-2.5 px-4 text-slate-600 max-w-xs truncate">{entry.detail}</td>
+                    <td className="py-2.5 px-4 text-slate-600 max-w-lg break-words">{entry.detail}</td>
                   </tr>
                 ))}
               </tbody>
