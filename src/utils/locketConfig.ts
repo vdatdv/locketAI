@@ -1,7 +1,7 @@
 export type ProxyClient = 'shadowrocket' | 'loon' | 'surge' | 'quantumultx';
 export type AspectRatioOption = '1:1' | '3:4' | '9:16';
 export type FreeAiModel = 'flux' | 'turbo' | 'anime';
-export type DeployPlatform = 'render' | 'railway' | 'vercel' | 'termux';
+export type DeployPlatform = 'worker' | 'render' | 'railway' | 'vercel' | 'termux';
 
 export interface LocketCaptionPreset {
   id: string;
@@ -26,9 +26,12 @@ export interface AiStylePreset {
   recommendedModel: FreeAiModel;
 }
 
-// Matches Locket AI & Filter generation endpoints across Cloud Functions v1/v2 & Locket API while excluding read/config/analytics/moment endpoints (such as getFilters)
+// Matches Locket in-app AI Filter & Photobooth endpoints (including generateFilteredImage) while excluding read/config/analytics/moment endpoints (such as getFilters)
 export const DEFAULT_SHADOWROCKET_AI_PATTERN =
-  '^https:\\/\\/(api\\.locketcamera\\.com|.*cloudfunctions\\.net|.*-uc\\.a\\.run\\.app)\\/(?!.*(getFilters|get[A-Z]|fetch[A-Z]|list[A-Z]|set[A-Z]|update[A-Z]|delete[A-Z]|postMoment|rollcall|account|login|streak|reaction|chat|message|friend|telemetry|analytics|log)).*([Aa]pply[Ff]ilter|[Gg]enerate[Ff]ilter|[Cc]reate[Ff]ilter|[Cc]ustom[Ff]ilter|[Pp]rocess[Ff]ilter|[Rr]ender[Ff]ilter|[Cc]amera[Ff]ilter|[Mm]agic[Ff]ilter|[Aa][Ii][Ff]ilter|[Ff]ilter[Aa][Ii]|[Gg]enerate[Aa][Ii]|[Gg]enerate[Mm]agic|[Gg]enerate[Ii]mage|[Gg]enerate[Pp]hoto|[Aa][Ii][Gg]enerate|filters?\\/(apply|generate|create|process|render)|ai\\/(generate|image|filter|remix|transform)|[Tt]ransform[Ii]mage|[Rr]estyle|[Pp]hoto[Ee]ffect|[Aa]pply[Ee]ffect|remix|nano|gemini).*';
+  '^https:\\/\\/(api\\.locketcamera\\.com|.*cloudfunctions\\.net|.*-uc\\.a\\.run\\.app)\\/(?!.*(getFilters|get[A-Z]|fetch[A-Z]|list[A-Z]|set[A-Z]|update[A-Z]|delete[A-Z]|postMoment|rollcall|account|login|streak|reaction|chat|message|friend|telemetry|analytics|log)).*([Gg]enerate[Ff]iltered[Ii]mage|[Cc]reate[Ff]iltered[Ii]mage|[Aa]pply[Ff]ilter|[Gg]enerate[Ff]ilter|[Cc]reate[Ff]ilter|[Cc]ustom[Ff]ilter|[Pp]rocess[Ff]ilter|[Rr]ender[Ff]ilter|[Cc]amera[Ff]ilter|[Mm]agic[Ff]ilter|[Aa][Ii][Ff]ilter|[Ff]ilter[Aa][Ii]|[Gg]enerate[Aa][Ii]|[Gg]enerate[Mm]agic|[Gg]enerate[Pp]hotobooth|[Pp]hotobooth|[Gg]enerate[Ii]mage|[Gg]enerate[Pp]hoto|[Aa][Ii][Gg]enerate|filters?\\/(apply|generate|create|process|render)|ai\\/(generate|image|filter|remix|transform)|[Tt]ransform[Ii]mage|[Rr]estyle|[Pp]hoto[Ee]ffect|[Aa]pply[Ee]ffect).*';
+
+export const LOCKET_FILTER_UNLOCK_PATTERN =
+  '^https:\\/\\/api\\.locketcamera\\.com\\/(?!.*([Gg]enerate[Ff]iltered[Ii]mage|[Cc]reate[Ff]iltered[Ii]mage|[Gg]enerate[Ff]ilter|[Aa]pply[Ff]ilter)).*';
 
 export const LOCKET_FILTERS: LocketFilterPreset[] = [
   {
@@ -198,18 +201,18 @@ export const LOCKET_FILTERS: LocketFilterPreset[] = [
     label: 'Clown',
     promptInstruction: 'colorful artistic circus clown face paint and red nose, vibrant carnival lighting',
   },
-  // Holidays
+  // Holidays & Seasonal
   {
     id: 'santa_cutout',
     category: 'Holidays',
     label: 'Santa Cutout (Noel)',
-    promptInstruction: 'wearing a cozy red Santa Claus hat, warm Christmas tree lights bokeh in background',
+    promptInstruction: 'dressed up as Santa Claus with cozy red Santa hat and white fur trim, preserving exact pose and background, warm holiday lights',
   },
   {
     id: 'elf_cutout',
     category: 'Holidays',
     label: 'Elf Cutout',
-    promptInstruction: 'wearing cute festive green Christmas elf hat and ears, snowy holiday glow',
+    promptInstruction: 'dressed up as a festive Christmas Elf with green hat and pointed ears, preserving exact pose and background',
   },
   {
     id: 'sweet_hearts',
@@ -217,7 +220,197 @@ export const LOCKET_FILTERS: LocketFilterPreset[] = [
     label: 'Sweet Hearts (Valentine)',
     promptInstruction: 'romantic Valentine pastel pink heart confetti atmosphere, dreamy warm portrait',
   },
+  {
+    id: 'easter_bunney_cutout',
+    category: 'Holidays',
+    label: 'Easter Bunny',
+    promptInstruction: 'wearing a cute pastel Easter bunny ear headband and spring aesthetic, preserving exact pose and background',
+  },
+  {
+    id: 'easter_chick_cutout',
+    category: 'Holidays',
+    label: 'Easter Chick',
+    promptInstruction: 'wearing a bright yellow fluffy Easter chick costume, preserving exact pose and background',
+  },
+  {
+    id: 'leprechaun',
+    category: 'Holidays',
+    label: 'Leprechaun',
+    promptInstruction: 'wearing a green top hat with shamrock and festive leprechaun costume, preserving exact pose and background',
+  },
+  {
+    id: 'lucky_face',
+    category: 'Holidays',
+    label: 'Lucky Face (Tàn nhang)',
+    promptInstruction: 'cute subtle freckles across the bridge of the nose and cheeks, warm golden glow, preserving exact pose and background',
+  },
+  {
+    id: 'frosty',
+    category: 'Holidays',
+    label: 'Frosty (Băng giá)',
+    promptInstruction: 'cozy winter snow and icy frosted sparkle atmosphere around the portrait, preserving exact pose',
+  },
+  // Photobooth 4-Cut & Frames
+  {
+    id: 'photobooth',
+    category: 'Photobooth',
+    label: 'Korean Photobooth 4-Cut',
+    promptInstruction: 'captured with a Korean photobooth 4-cut aesthetic, vintage soft lighting, clear facial features, modern iPhone camera look',
+  },
+  {
+    id: 'photobooth_cute',
+    category: 'Photobooth',
+    label: 'Photobooth Cute Pastel',
+    promptInstruction: 'captured with a cute pastel photobooth aesthetic, soft dreamy lighting, clear facial features',
+  },
+  {
+    id: 'pb_strawberry',
+    category: 'Photobooth',
+    label: 'Photobooth Strawberry',
+    promptInstruction: 'captured with a cute pastel strawberry photobooth aesthetic, soft rosy lighting, modern iPhone camera look',
+  },
+  {
+    id: 'pb_vintage',
+    category: 'Photobooth',
+    label: 'Photobooth Vintage 90s',
+    promptInstruction: 'captured with vintage 90s film photobooth aesthetic, warm nostalgic grain and soft flash lighting',
+  },
+  {
+    id: 'pb_galaxy',
+    category: 'Photobooth',
+    label: 'Photobooth Galaxy',
+    promptInstruction: 'captured with dreamy galaxy stars ambient glow aesthetic, soft cosmic studio lighting',
+  },
+  {
+    id: 'pb_holo_4cut',
+    category: 'Photobooth',
+    label: 'Photobooth Holographic Y2K',
+    promptInstruction: 'captured with holographic Y2K photobooth aesthetic, iridescent chrome shine and soft studio lighting',
+  },
+  {
+    id: 'frame_classic_pb',
+    category: 'Photobooth',
+    label: 'Classic B&W Photobooth',
+    promptInstruction: 'captured with classic black and white film photobooth aesthetic, dramatic soft studio contrast',
+  },
+  // Effects & Fantasy
+  {
+    id: 'rose_flower',
+    category: 'Effects',
+    label: 'Rose Flower (Hoa hồng)',
+    promptInstruction: 'holding a single red rose flower with romantic warm cinematic lighting, preserving exact pose and background',
+  },
+  {
+    id: 'golden_hour',
+    category: 'Effects',
+    label: 'Golden Hour (Nắng chiều)',
+    promptInstruction: 'bathed in rich warm sunset golden hour sunlight glow and soft shadows, preserving exact pose and background',
+  },
+  {
+    id: 'watercolor_art',
+    category: 'Effects',
+    label: 'Watercolor Art (Màu nước)',
+    promptInstruction: 'delicate hand-painted watercolor illustration artwork with soft brush strokes and artistic paper texture',
+  },
+  {
+    id: 'harry_potter',
+    category: 'Effects',
+    label: 'Harry Potter Wizard',
+    promptInstruction: 'dressed as a Hogwarts wizard wearing a dark academic robe and scarf, magical candlelit castle lighting',
+  },
+  {
+    id: 'minecraft',
+    category: 'Effects',
+    label: 'Minecraft Voxel',
+    promptInstruction: 'transformed into a stylized blocky Minecraft 3D voxel world aesthetic while preserving pose and scene',
+  },
+  {
+    id: 'shrek_ogre',
+    category: 'Effects',
+    label: 'Shrek Ogre',
+    promptInstruction: 'playful transformation with green Shrek ogre rounded ears and rustic tunic while preserving exact pose',
+  },
+  {
+    id: 'superhero_cape',
+    category: 'Effects',
+    label: 'Superhero Cape',
+    promptInstruction: 'dressed in a vibrant blue and red superhero suit with flowing red cape, dramatic studio lighting',
+  },
+  {
+    id: 'pirate_hat',
+    category: 'Effects',
+    label: 'Pirate Captain',
+    promptInstruction: 'dressed like a movie pirate captain with weathered leather tricorn hat and coat, preserving exact pose',
+  },
+  {
+    id: 'ocean_underwater',
+    category: 'Effects',
+    label: 'Ocean Underwater',
+    promptInstruction: 'underwater ocean blue light caustics and floating bubbles around the portrait, preserving exact pose',
+  },
+  {
+    id: 'fireworks',
+    category: 'Effects',
+    label: 'Fireworks (Pháo hoa)',
+    promptInstruction: 'night sky filled with colorful exploding fireworks reflections across the scene, preserving exact pose',
+  },
 ];
+
+export const LOCKET_FILTER_ALIASES: Record<string, string> = {
+  stk_dio_disco: 'disco_lights',
+  disco: 'disco_lights',
+  stk_dio_cash: 'cash_money',
+  cash: 'cash_money',
+  stk_dio_wedding: 'wedding',
+  stk_dio_cowboy: 'cowboy_cowgirl',
+  cowboy: 'cowboy_cowgirl',
+  stk_dio_looksmaxing: 'looks_maxxing',
+  looksmaxing: 'looks_maxxing',
+  stk_dio_orange_wig: 'okay_wig',
+  orange_wig: 'okay_wig',
+  stk_dio_bleached_hair: 'blonde_bleached',
+  bleached_hair: 'blonde_bleached',
+  stk_dio_bob: 'bob_cut',
+  bob: 'bob_cut',
+  stk_dio_bearded: 'beard',
+  bearded: 'beard',
+  stk_dio_bearded_holiday: 'beard',
+  stk_dio_sweat_hearts: 'sweet_hearts',
+  sweat_hearts: 'sweet_hearts',
+  stk_dio_elf: 'elf_cutout',
+  elf: 'elf_cutout',
+  stk_dio_santa: 'santa_cutout',
+  santa: 'santa_cutout',
+  stk_dio_easter_bunny: 'easter_bunney_cutout',
+  easter_bunny: 'easter_bunney_cutout',
+  stk_dio_easter_chick: 'easter_chick_cutout',
+  easter_chick: 'easter_chick_cutout',
+  stk_dio_toothless: 'toothless',
+  stk_dio_bye_brows: 'bye_brows',
+  stk_dio_bowling_ball: 'bowling_ball',
+  stk_dio_buns: 'buns',
+  stk_dio_tatted: 'tatted',
+  stk_dio_mohawk: 'mohawk',
+  stk_dio_braces: 'braces',
+  stk_dio_slimed: 'slimed',
+  stk_dio_princess: 'princess',
+  stk_dio_happy_birthday: 'happy_birthday',
+  stk_dio_cutesy: 'cutesy',
+  stk_dio_sticker_face: 'sticker_face',
+  stk_dio_flower_crown: 'flower_crown',
+  stk_dio_love_bug: 'love_bug',
+  stk_dio_giraffe: 'giraffe',
+  stk_dio_clown: 'clown',
+  stk_dio_leprechaun: 'leprechaun',
+  stk_dio_lucky_face: 'lucky_face',
+  stk_dio_frosty: 'frosty',
+  stk_dio_influencer: 'influencer',
+  photobooth_4cut: 'photobooth',
+  pb_scrapbook_ripped_4cut: 'photobooth_cute',
+  pb_ripped_paper_4cut: 'photobooth_cute',
+  pb_denim_ripped_2x2: 'photobooth',
+};
+
 
 export const LOCKET_CAPTIONS: LocketCaptionPreset[] = [
   {
@@ -327,19 +520,180 @@ export const AI_STYLE_PRESETS: AiStylePreset[] = [
   },
 ];
 
+export function normalizeFilterId(rawFilterId?: string): string {
+  const cleanId = (rawFilterId || '').trim().toLowerCase();
+  if (!cleanId || cleanId === 'none') return '';
+  if (LOCKET_FILTER_ALIASES[cleanId]) {
+    return LOCKET_FILTER_ALIASES[cleanId];
+  }
+  if (cleanId.startsWith('stk_') && LOCKET_FILTER_ALIASES[cleanId.slice(4)]) {
+    return LOCKET_FILTER_ALIASES[cleanId.slice(4)];
+  }
+  if (cleanId.startsWith('stk_')) {
+    return cleanId.slice(4);
+  }
+  return cleanId;
+}
+
+export interface ExtractedLocketParams {
+  filterId: string;
+  prompt: string;
+  styleId: string;
+  aspectRatio: AspectRatioOption;
+  model: FreeAiModel;
+  imageBase64: string;
+  imageUrl: string;
+  originalUrl: string;
+  isCallable: boolean;
+  bodyKeys: string[];
+}
+
+export function extractLocketGenerateParams(rawBody: unknown): ExtractedLocketParams {
+  const root =
+    rawBody && typeof rawBody === 'object' && !Array.isArray(rawBody)
+      ? (rawBody as Record<string, unknown>)
+      : {};
+  const callablePayload =
+    root.data && typeof root.data === 'object' && !Array.isArray(root.data)
+      ? (root.data as Record<string, unknown>)
+      : null;
+  const body = callablePayload || root;
+  const nestedFilter =
+    body.filter && typeof body.filter === 'object' && !Array.isArray(body.filter)
+      ? (body.filter as Record<string, unknown>)
+      : null;
+  const nestedPayload =
+    body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload)
+      ? (body.payload as Record<string, unknown>)
+      : null;
+  const merged = { ...root, ...body, ...(nestedPayload || {}), ...(nestedFilter || {}) };
+
+  const pickString = (keys: string[]): string => {
+    for (const key of keys) {
+      const val = merged[key];
+      if (typeof val === 'string' && val.trim()) {
+        return val.trim();
+      }
+    }
+    return '';
+  };
+
+  const rawFilterId = pickString([
+    'filter_id',
+    'filterId',
+    'filter_name',
+    'filterName',
+    'sticker_id',
+    'stickerId',
+    'sticker',
+    'preset_id',
+    'presetId',
+    'preset',
+    'template_id',
+    'templateId',
+    'frame_id',
+    'frameId',
+    'effect_id',
+    'effectId',
+    'style_id',
+    'styleId',
+    'filter',
+    'id',
+    'name',
+  ]);
+  const filterId = normalizeFilterId(rawFilterId);
+
+  const prompt = pickString([
+    'prompt',
+    'custom_prompt',
+    'customPrompt',
+    'text',
+    'caption',
+    'description',
+    'instruction',
+  ]);
+
+  let imageBase64 = pickString([
+    'image_base64',
+    'imageBase64',
+    'photo_base64',
+    'photoBase64',
+    'source_base64',
+    'sourceBase64',
+    'input_base64',
+    'inputBase64',
+    'image_data',
+    'imageData',
+    'base64',
+  ]);
+
+  let imageUrl = pickString([
+    'image_url',
+    'imageUrl',
+    'input_image_url',
+    'inputImageUrl',
+    'input_url',
+    'inputUrl',
+    'source_image_url',
+    'sourceImageUrl',
+    'source_url',
+    'sourceUrl',
+    'photo_url',
+    'photoUrl',
+    'media_url',
+    'mediaUrl',
+    'original_image_url',
+    'originalImageUrl',
+    'file_url',
+    'fileUrl',
+    'thumbnail_url',
+    'thumbnailUrl',
+  ]);
+
+  const genericImage = pickString(['image', 'photo', 'input_image', 'source_image', 'media']);
+  if (genericImage) {
+    if (/^https?:\/\//i.test(genericImage) && !imageUrl) {
+      imageUrl = genericImage;
+    } else if (!/^https?:\/\//i.test(genericImage) && !imageBase64) {
+      imageBase64 = genericImage;
+    }
+  }
+
+  const styleId = pickString(['style']) || 'natural';
+  const aspectRaw = pickString(['aspect_ratio', 'aspectRatio']);
+  const aspectRatio: AspectRatioOption =
+    aspectRaw === '3:4' || aspectRaw === '9:16' ? aspectRaw : '1:1';
+  const modelRaw = pickString(['model']);
+  const model: FreeAiModel =
+    modelRaw === 'turbo' || modelRaw === 'anime' ? modelRaw : 'flux';
+
+  return {
+    filterId,
+    prompt,
+    styleId,
+    aspectRatio,
+    model,
+    imageBase64,
+    imageUrl,
+    originalUrl: pickString(['original_url', 'originalUrl']),
+    isCallable: Boolean(callablePayload || root.callable),
+    bodyKeys: Object.keys(merged).slice(0, 12),
+  };
+}
+
 export function mapFilterIdToPrompt(filterId?: string, customPrompt?: string): string {
   const cleanCustom = (customPrompt || '').trim();
-  const cleanId = (filterId || '').trim().toLowerCase();
-  if (!cleanId || cleanId === 'none') {
+  const normalizedId = normalizeFilterId(filterId);
+  if (!normalizedId) {
     return cleanCustom;
   }
-  const matched = LOCKET_FILTERS.find((f) => f.id === cleanId);
+  const matched = LOCKET_FILTERS.find((f) => f.id === normalizedId);
   if (matched && matched.promptInstruction) {
     return cleanCustom
       ? `${cleanCustom}, ${matched.promptInstruction}`
       : `portrait transformation, ${matched.promptInstruction}`;
   }
-  const readable = cleanId.replace(/_/g, ' ');
+  const readable = normalizedId.replace(/_/g, ' ');
   return cleanCustom
     ? `${cleanCustom}, ${readable} filter style`
     : `creative portrait with ${readable} filter effect`;
@@ -375,6 +729,18 @@ export function normalizeServerUrl(rawUrl: string): string {
   return rawUrl.trim().replace(/\/+$/, '');
 }
 
+export function normalizeGitRawScriptsUrl(rawInput: string): string {
+  const clean = rawInput.trim().replace(/\/+$/, '');
+  if (!clean) return '';
+  const ghMatch = clean.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/tree\/([^/]+)(?:\/(.*))?)?$/i);
+  if (ghMatch) {
+    const [, owner, repo, branch = 'main', subPath = 'github-raw/scripts'] = ghMatch;
+    const trimmedSub = subPath.replace(/^\/+|\/+$/g, '');
+    return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${trimmedSub || 'github-raw/scripts'}`;
+  }
+  return clean;
+}
+
 export function isValidServerUrl(rawUrl: string): boolean {
   const normalized = normalizeServerUrl(rawUrl);
   if (!normalized) return false;
@@ -386,72 +752,224 @@ export function isValidServerUrl(rawUrl: string): boolean {
   }
 }
 
+export function generateFilterUnlockScript(): string {
+  return `// ============================================================
+// Locket Filter & Gold Account Unlock (Clean Self-Hosted)
+// Mở khóa quyền can_use_filters, can_generate_filtered_image, Gold badge
+// trên api.locketcamera.com — KHÔNG gửi dữ liệu sang server/worker ngoài.
+// ============================================================
+
+(function () {
+  const reqUrl = typeof $request !== "undefined" && $request && $request.url ? String($request.url) : "";
+
+  if (typeof $response === "undefined") {
+    if (reqUrl.includes("changeProfileInfo")) {
+      const headers = {
+        "Content-Type": "application/json; charset=utf-8",
+        "Access-Control-Allow-Origin": "*"
+      };
+      const payload = {
+        badge: "locket_gold",
+        badge_tier: "gold",
+        is_gold: true,
+        success: true
+      };
+      $done({
+        response: {
+          status: 200,
+          headers: headers,
+          body: JSON.stringify({ data: payload, result: payload })
+        }
+      });
+      return;
+    }
+
+    const headers = Object.assign({}, ($request && $request.headers) || {});
+    for (const k of Object.keys(headers)) {
+      const low = k.toLowerCase();
+      if (low === "if-none-match" || low === "if-modified-since" || low === "x-revenuecat-etag") {
+        delete headers[k];
+      }
+    }
+    $done({ headers: headers });
+    return;
+  }
+
+  if (reqUrl.includes("generateFilteredImage") || reqUrl.includes("createFilteredImage")) {
+    $done({});
+    return;
+  }
+
+  let body = ($response && $response.body) || "";
+  let status = ($response && ($response.status || $response.statusCode)) || 200;
+
+  if (body && typeof body === "string") {
+    try {
+      let obj = JSON.parse(body);
+      const isFriendsOrFeed = /getFriends|getUsers|fetchFriends|getRecipients|recipients|moments|fetchMoments|getMoments|contacts|postMoment|getGroupMessages/i.test(reqUrl);
+
+      if (!isFriendsOrFeed && (status === 400 || status === 401 || status === 403)) {
+        status = 200;
+      }
+
+      const applyGoldAndFilterAccess = (target) => {
+        if (!target || typeof target !== "object" || Array.isArray(target)) return;
+        target.badge = "locket_gold";
+        target.badge_tier = "gold";
+        target.show_badge = true;
+        target.is_gold = true;
+        target.has_gold = true;
+        target.gold = true;
+        target.gold_subscription = true;
+        target.has_gold_subscription = true;
+        target.tier = "gold";
+        target.subscription_status = "active";
+        target.can_use_filters = true;
+        target.can_use_gold_features = true;
+        target.can_generate_filtered_image = true;
+        target.can_create_filtered_image = true;
+        target.has_ai_access = true;
+        target.filter_access = true;
+      };
+
+      const isSingleUserEndpoint = !isFriendsOrFeed && /getUser|fetchUser|getAccount|accountInfo|userProfile|getSubscription|subscription|clientData/i.test(reqUrl);
+      const isSingleUserObject = Boolean(
+        !isFriendsOrFeed &&
+        obj && (
+          isSingleUserEndpoint ||
+          (obj.data && typeof obj.data === "object" && !Array.isArray(obj.data) && obj.data.email) ||
+          (obj.result && typeof obj.result === "object" && !Array.isArray(obj.result) && obj.result.email) ||
+          (obj.user && typeof obj.user === "object" && !Array.isArray(obj.user) && obj.user.email)
+        )
+      );
+
+      if (isSingleUserObject) {
+        applyGoldAndFilterAccess(obj);
+        if (obj.data && typeof obj.data === "object") applyGoldAndFilterAccess(obj.data);
+        if (obj.result && typeof obj.result === "object") applyGoldAndFilterAccess(obj.result);
+        if (obj.user && typeof obj.user === "object") applyGoldAndFilterAccess(obj.user);
+      }
+
+      const falseKeys = [
+        "is_locked", "locked", "requires_gold", "require_gold", "gold_only",
+        "is_gold_only", "paywall", "show_paywall", "show_upsell", "upsell",
+        "blurred", "is_blurred", "needs_gold"
+      ];
+      const trueKeys = [
+        "can_view", "unlocked", "is_unlocked", "is_free", "free",
+        "can_use_filter", "allowed", "can_use_filters",
+        "can_generate_filtered_image", "can_create_filtered_image",
+        "has_ai_access", "filter_access"
+      ];
+
+      const transformNode = (node) => {
+        if (!node || typeof node !== "object") return;
+        if (Array.isArray(node)) {
+          for (let i = 0; i < node.length; i++) transformNode(node[i]);
+          return;
+        }
+        const isSelfNode = Boolean(
+          ("email" in node && typeof node.email === "string" && node.email.includes("@")) ||
+          ("push_token" in node && node.push_token) ||
+          ("fcm_token" in node && node.fcm_token)
+        );
+        if (isSelfNode) {
+          applyGoldAndFilterAccess(node);
+        }
+        for (const k of falseKeys) {
+          if (k in node) node[k] = false;
+        }
+        for (const k of trueKeys) {
+          if (k in node) node[k] = true;
+        }
+        const clearUrl = node.unblurred_url || node.unlocked_url || node.result_url || node.image_url || node.transformed_image_url || node.url;
+        if (typeof clearUrl === "string" && clearUrl.startsWith("http")) {
+          if ("blurred_url" in node) node.blurred_url = clearUrl;
+          if ("blurred_image_url" in node) node.blurred_image_url = clearUrl;
+          if ("preview_url" in node && node.is_blurred) node.preview_url = clearUrl;
+        }
+        for (const key of Object.keys(node)) {
+          if (node[key] && typeof node[key] === "object") {
+            transformNode(node[key]);
+          }
+        }
+      };
+
+      transformNode(obj);
+      body = JSON.stringify(obj);
+    } catch (e) {}
+  }
+
+  const respHeaders = Object.assign({}, ($response && $response.headers) || {});
+  delete respHeaders["Content-Encoding"];
+  delete respHeaders["content-encoding"];
+  delete respHeaders["Content-Length"];
+  delete respHeaders["content-length"];
+  delete respHeaders["Transfer-Encoding"];
+  delete respHeaders["transfer-encoding"];
+  respHeaders["content-type"] = "application/json; charset=utf-8";
+
+  $done({ status: status, headers: respHeaders, body: body });
+})();
+`;
+}
+
 export function generateMitmRedirectScript(serverUrl: string, client: ProxyClient): string {
   const cleanUrl = normalizeServerUrl(serverUrl) || 'https://your-free-locket-ai.onrender.com';
-
-  const guardSnippet = `const targetUrl = $request.url || "";
-const isSafePassthroughUrl =
-  /analytics\\.locketcamera\\.com/i.test(targetUrl) ||
-  /\\/(getFilters|postMoment|getMoment|latestMoment|setClientData|setNotificationToken|getRollcall|getGroup|fetchUser|getUser)/i.test(targetUrl);
-
-let rawBody = {};
-try {
-  rawBody = $request.body ? JSON.parse($request.body) : {};
-} catch (e) {}
-
-const inner = rawBody && rawBody.data ? rawBody.data : rawBody;
-const isCallable = Boolean(rawBody && rawBody.data);
-const hasAiOrFilterPayload = Boolean(
-  inner && (
-    inner.prompt || inner.custom_prompt || inner.text || inner.caption ||
-    inner.filter_id || inner.filterId || inner.filter || inner.preset ||
-    inner.image_base64 || inner.image || inner.photo || inner.imageData ||
-    inner.image_url || inner.imageUrl || inner.source_image || inner.input_image
-  )
-);`;
+  let serverHost = 'your-free-locket-ai.onrender.com';
+  try {
+    serverHost = new URL(cleanUrl).host;
+  } catch {
+    // fallback host
+  }
 
   if (client === 'quantumultx') {
     return `// ============================================================
-// Locket AI & Filter Free Server Redirect (Quantumult X)
-// Bắt request Filter/AI trong app Locket và chuyển sang server miễn phí
-// Tự động bỏ qua getFilters / analytics / request không chứa filter hoặc prompt
+// Locket In-App AI & Filter Redirect (Quantumult X)
+// Bắt POST /generateFilteredImage trong app Locket và chuyển tới server miễn phí
 // ============================================================
 
-const FREE_AI_SERVER = "${cleanUrl}/api/locket/ai-generate";
+const TARGET_ENDPOINT = "${cleanUrl}/generateFilteredImage";
+const targetUrl = ($request && $request.url) || "";
 
-${guardSnippet}
-
-if (isSafePassthroughUrl || !hasAiOrFilterPayload) {
-  $done({});
+if (typeof $response !== "undefined") {
+  let obj = {};
+  try {
+    obj = $response.body ? JSON.parse($response.body) : {};
+  } catch (e) {}
+  delete obj.error;
+  delete obj.errors;
+  if (obj.result && typeof obj.result === "object") {
+    delete obj.result.error;
+    delete obj.result.errors;
+  }
+  $done({
+    status: "HTTP/1.1 200 OK",
+    headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" },
+    body: JSON.stringify(obj)
+  });
 } else {
+  const query = targetUrl.includes("?") ? "?" + targetUrl.split("?")[1] : "";
   const req = {
-    url: FREE_AI_SERVER,
-    method: "POST",
-    headers: {
+    url: TARGET_ENDPOINT + query,
+    method: ($request && $request.method) || "POST",
+    headers: Object.assign({}, ($request && $request.headers) || {}, {
       "Content-Type": "application/json",
+      "Host": "${serverHost}",
       "X-Locket-Proxy": "QuantumultX"
-    },
-    body: JSON.stringify({
-      prompt: inner.prompt || inner.custom_prompt || inner.text || inner.caption || "",
-      filter_id: inner.filter_id || inner.filterId || inner.filter || inner.preset || inner.style || "",
-      style: inner.style || "natural",
-      aspect_ratio: inner.aspect_ratio || "1:1",
-      image_base64: inner.image_base64 || inner.image || inner.photo || inner.imageData || "",
-      image_url: inner.image_url || inner.imageUrl || inner.source_image || inner.input_image || "",
-      callable: isCallable,
-      original_url: targetUrl
-    })
+    }),
+    body: ($request && $request.body) || "{}"
   };
 
   $task.fetch(req).then(
     (response) => {
-      if (!response || (response.statusCode && response.statusCode >= 400) || !response.body) {
+      if (!response || !response.body) {
         $done({});
         return;
       }
       $done({
         status: "HTTP/1.1 200 OK",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" },
         body: response.body
       });
     },
@@ -464,53 +982,293 @@ if (isSafePassthroughUrl || !hasAiOrFilterPayload) {
   }
 
   return `// ============================================================
-// Locket AI & Filter Free Server Redirect (${client.toUpperCase()})
-// Dùng trực tiếp tính năng Filter / Tạo ảnh AI ngay trong app Locket
-// Hỗ trợ Img2Img (ảnh selfie từ Locket + filter_id) & Firebase Callable
-// Tự động bỏ qua getFilters / analytics / request không chứa filter hoặc prompt
+// Locket In-App AI & Filter Redirect (${client.toUpperCase()})
+// Chuyển hướng trực tiếp POST /generateFilteredImage từ app Locket
+// về máy chủ AI 0đ của bạn (giữ nguyên toàn bộ body ảnh selfie + filter)
 // ============================================================
 
-const FREE_AI_SERVER = "${cleanUrl}/api/locket/ai-generate";
+const TARGET_ENDPOINT = "${cleanUrl}/generateFilteredImage";
+const TARGET_HOST = "${serverHost}";
 
-${guardSnippet}
-
-if (isSafePassthroughUrl || !hasAiOrFilterPayload) {
-  $done({});
+if (typeof $response === "undefined") {
+  try {
+    if (typeof $request === "undefined" || !$request) {
+      $done({});
+    } else {
+      const origUrl = String($request.url || "");
+      let nextUrl = TARGET_ENDPOINT;
+      if (origUrl.includes("?")) {
+        const q = origUrl.split("?")[1];
+        if (q) nextUrl += "?" + q;
+      }
+      const headers = Object.assign({}, $request.headers || {});
+      headers["Host"] = TARGET_HOST;
+      headers["host"] = TARGET_HOST;
+      headers["X-Locket-Proxy"] = "${client}";
+      $done({ url: nextUrl, headers: headers });
+    }
+  } catch (e) {
+    $done({});
+  }
 } else {
-  const requestOptions = {
-    url: FREE_AI_SERVER,
-    headers: {
-      "Content-Type": "application/json",
-      "X-Locket-Proxy": "${client}"
-    },
-    body: JSON.stringify({
-      prompt: inner.prompt || inner.custom_prompt || inner.text || inner.caption || "",
-      filter_id: inner.filter_id || inner.filterId || inner.filter || inner.preset || "",
-      style: inner.style || "natural",
-      aspect_ratio: inner.aspect_ratio || "1:1",
-      image_base64: inner.image_base64 || inner.image || inner.photo || inner.imageData || "",
-      image_url: inner.image_url || inner.imageUrl || inner.source_image || inner.input_image || "",
-      callable: isCallable,
-      original_url: targetUrl
-    }),
-    timeout: 45
+  try {
+    let obj = {};
+    if ($response.body) {
+      try {
+        obj = JSON.parse($response.body);
+      } catch (e) {
+        obj = {};
+      }
+    }
+    delete obj.error;
+    delete obj.errors;
+    if (obj.result && typeof obj.result === "object") {
+      delete obj.result.error;
+      delete obj.result.errors;
+    }
+    $done({
+      status: 200,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Access-Control-Allow-Origin": "*"
+      },
+      body: JSON.stringify(obj)
+    });
+  } catch (e) {
+    $done({});
+  }
+}
+`;
+}
+
+export function generateDirectFilterScript(): string {
+  return `// ============================================================
+// Locket In-App AI Filter Direct (100% GitHub Raw · 0 Server)
+// Chạy trực tiếp trên Shadowrocket/Loon/Surge khi bấm Filter trong Locket
+// Hỗ trợ Img2Img (AI Horde R2 HTTPS) + Fallback Pollinations Flux
+// ============================================================
+
+(function () {
+  const FILTER_HINTS = {
+    flower_crown: "wearing a delicate fresh pastel flower crown on head, dreamy soft sunlight glow",
+    cutesy: "soft rosy blush cheeks, adorable kawaii aesthetic, dreamy pastel tones, glowing skin",
+    sticker_face: "playful cute pastel face stickers on cheeks, sparkling eyes",
+    love_bug: "cute floating pink hearts around portrait, warm rosy lighting",
+    princess: "wearing a sparkling crystal diamond tiara crown, fairytale royal glow",
+    disco_lights: "colorful disco ball light reflections across face, party neon aesthetic",
+    cash_money: "wearing cool dark sunglasses with floating dollar bills, studio lighting",
+    slimed: "playful glossy neon green slime splashes effect, vibrant pop art lighting",
+    happy_birthday: "festive birthday party confetti floating, warm candlelight bokeh",
+    blonde_bleached: "platinum blonde bleached hairstyle transformation, realistic hair texture",
+    bob_cut: "chic sleek chin-length bob haircut transformation, fashionable portrait",
+    buns: "cute double space buns hairstyle, trendy street style portrait",
+    tatted: "cool stylish artistic facial and neck tattoos, edgy editorial portrait",
+    mohawk: "bold punk mohawk hairstyle transformation, dramatic studio lighting",
+    braces: "cute smiling portrait with colorful sparkly orthodontic braces",
+    beard: "full well-groomed realistic beard transformation, warm portrait lighting",
+    bye_brows: "avant-garde bleached invisible eyebrows editorial fashion look",
+    toothless: "hilarious goofy toothless smile comedy portrait effect",
+    looks_maxxing: "sharp chiseled jawline dramatic black and white lighting",
+    influencer: "glamorous studio ring-light influencer glow, flawless makeup",
+    okay_wig: "wearing an exaggerated funny colorful wig, playful comedy portrait",
+    wedding: "dressed in elegant white wedding attire with floral veil, romantic daylight",
+    cowboy_cowgirl: "wearing a classic stylish cowboy hat and western denim jacket",
+    giraffe: "funny giraffe ears and spotted pattern costume transformation",
+    clown: "colorful artistic circus clown face paint and red nose",
+    easter_bunney_cutout: "cute fluffy white bunny ears headband with pastel Easter flowers",
+    easter_chick_cutout: "adorable sunny yellow chick theme, pastel spring flowers",
+    leprechaun: "wearing a green lucky leprechaun top hat and four-leaf clovers",
+    lucky_face: "four-leaf clover lucky bokeh sparkles, glowing golden-green portrait",
+    sweet_hearts: "pastel Valentine candy hearts floating around, warm dreamy aesthetic",
+    elf_cutout: "cute festive Christmas elf hat and pointed ears, holiday lights",
+    santa_cutout: "wearing a cozy red Santa hat, warm Christmas tree lights bokeh",
+    frosty: "magical winter snowfall ice crystals, frosty blue glow",
+    photobooth: "Korean 4-cut photobooth photo strip grid, 4 playful poses, studio lighting",
+    photobooth_cute: "cute pastel kawaii 4-cut photobooth collage strip with doodle stickers",
+    pb_strawberry: "sweet strawberry frame 4-cut photobooth collage, soft pink daylight",
+    pb_vintage: "retro Y2K vintage film 4-cut photobooth strip, subtle grain",
+    pb_galaxy: "dreamy cosmic starry purple-blue 4-cut photobooth frame",
+    pb_holo_4cut: "iridescent holographic foil 4-cut photobooth strip",
+    rose_flower: "surrounded by blooming red and pink roses, romantic golden hour",
+    golden_hour: "warm dreamy sunset golden hour sunlight glow",
+    watercolor_art: "soft artistic watercolor painting portrait, pastel brush strokes",
+    harry_potter: "wearing round glasses and wizard house scarf, magical Hogwarts glow",
+    minecraft: "cute blocky 3D voxel cube pixel-art portrait transformation",
+    superhero_cape: "wearing a heroic red superhero cape, dramatic cinematic lighting",
+    pirate_hat: "wearing a classic pirate captain tricorne hat, adventure aesthetic",
+    ocean_underwater: "underwater sunlight caustic ripples, dreamy aqua blue glow",
+    fireworks: "bright colorful night fireworks bursting behind portrait"
   };
 
-  $httpClient.post(requestOptions, function (error, response, data) {
-    const statusCode = response && (response.status || response.statusCode || 200);
-    if (error || !data || statusCode >= 400) {
-      $done({});
-      return;
-    }
+  function respondWithImage(imgUrl, provider, filterId) {
+    const dataNode = {
+      status: 200,
+      outputUrl: imgUrl,
+      output_url: imgUrl,
+      url: imgUrl,
+      imageUrl: imgUrl,
+      image_url: imgUrl
+    };
+    const core = {
+      ok: true,
+      status: 200,
+      provider: provider,
+      filter_id: filterId || undefined,
+      outputUrl: imgUrl,
+      output_url: imgUrl,
+      url: imgUrl,
+      imageUrl: imgUrl,
+      image_url: imgUrl,
+      data: dataNode
+    };
+    const payload = Object.assign({}, core, { result: core });
     $done({
       response: {
         status: 200,
-        headers: { "Content-Type": "application/json" },
-        body: data
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Access-Control-Allow-Origin": "*"
+        },
+        body: JSON.stringify(payload)
       }
     });
-  });
-}
+  }
+
+  function buildPollinationsUrl(prompt) {
+    const seed = Math.floor(Math.random() * 1000000);
+    return "https://image.pollinations.ai/prompt/" + encodeURIComponent(prompt) + "?width=768&height=1024&model=flux&seed=" + seed + "&nologo=true";
+  }
+
+  try {
+    let raw = {};
+    if (typeof $request !== "undefined" && $request && $request.body) {
+      try {
+        raw = JSON.parse($request.body);
+      } catch (e) {}
+    }
+    const inner = (raw && raw.data && typeof raw.data === "object") ? raw.data : (raw || {});
+    const merged = Object.assign({}, raw, inner, (inner && inner.filter && typeof inner.filter === "object") ? inner.filter : {});
+
+    let filterId = String(
+      merged.filter_id || merged.filterId || merged.sticker_id || merged.stickerId ||
+      merged.preset_id || merged.presetId || merged.template_id || merged.effect_id ||
+      merged.filter || ""
+    ).trim().toLowerCase();
+    if (filterId.startsWith("stk_dio_")) filterId = filterId.slice(8);
+    else if (filterId.startsWith("stk_")) filterId = filterId.slice(4);
+
+    const userPrompt = String(merged.prompt || merged.custom_prompt || merged.text || merged.description || "").trim();
+    const hint = FILTER_HINTS[filterId] || (filterId ? filterId.replace(/_/g, " ") + " filter aesthetic" : "aesthetic portrait photography");
+    const fullPrompt = [userPrompt, hint, "authentic candid 35mm portrait, natural lighting"].filter(Boolean).join(", ");
+
+    const rawImg = String(
+      merged.image_base64 || merged.imageBase64 || merged.photo_base64 ||
+      merged.source_base64 || merged.input_base64 || merged.base64 ||
+      ((merged.image && !/^https?:\\/\\//i.test(merged.image)) ? merged.image : "") ||
+      ((merged.photo && !/^https?:\\/\\//i.test(merged.photo)) ? merged.photo : "") ||
+      ""
+    );
+    const cleanBase64 = rawImg.replace(/^data:image\\/[a-zA-Z0-9+.-]+;base64,/, "").trim();
+
+    if (cleanBase64.length < 64 || typeof $httpClient === "undefined") {
+      respondWithImage(buildPollinationsUrl(fullPrompt), "pollinations-direct", filterId);
+      return;
+    }
+
+    const submitBody = JSON.stringify({
+      prompt: fullPrompt,
+      params: {
+        width: 512,
+        height: 640,
+        steps: 18,
+        n: 1,
+        sampler_name: "k_euler_a",
+        denoising_strength: 0.58
+      },
+      source_image: cleanBase64,
+      source_processing: "img2img",
+      nsfw: false,
+      censor_nsfw: true,
+      r2: true
+    });
+
+    $httpClient.post(
+      {
+        url: "https://aihorde.net/api/v2/generate/async",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": "0000000000",
+          "Client-Agent": "LocketGitRawDirect:1.0:ios"
+        },
+        body: submitBody,
+        timeout: 10
+      },
+      function (err, resp, data) {
+        if (err || !data) {
+          respondWithImage(buildPollinationsUrl(fullPrompt), "pollinations-fallback", filterId);
+          return;
+        }
+        let jobId = "";
+        try {
+          jobId = JSON.parse(data).id || "";
+        } catch (e) {}
+        if (!jobId) {
+          respondWithImage(buildPollinationsUrl(fullPrompt), "pollinations-fallback", filterId);
+          return;
+        }
+
+        let attempts = 0;
+        const maxAttempts = 12;
+        function pollStatus() {
+          attempts += 1;
+          $httpClient.get(
+            {
+              url: "https://aihorde.net/api/v2/generate/check/" + jobId,
+              headers: { "Client-Agent": "LocketGitRawDirect:1.0:ios" },
+              timeout: 5
+            },
+            function (cErr, cResp, cBody) {
+              let chk = {};
+              try {
+                chk = cBody ? JSON.parse(cBody) : {};
+              } catch (e) {}
+              if (chk.faulted || (!chk.done && attempts >= maxAttempts) || (attempts >= 3 && typeof chk.wait_time === "number" && chk.wait_time > 35)) {
+                respondWithImage(buildPollinationsUrl(fullPrompt), "pollinations-fallback", filterId);
+                return;
+              }
+              if (chk.done) {
+                $httpClient.get(
+                  {
+                    url: "https://aihorde.net/api/v2/generate/status/" + jobId,
+                    headers: { "Client-Agent": "LocketGitRawDirect:1.0:ios" },
+                    timeout: 8
+                  },
+                  function (sErr, sResp, sBody) {
+                    let imgUrl = "";
+                    try {
+                      const st = JSON.parse(sBody || "{}");
+                      imgUrl = st.generations && st.generations[0] && st.generations[0].img ? st.generations[0].img : "";
+                    } catch (e) {}
+                    if (imgUrl && imgUrl.startsWith("http")) {
+                      respondWithImage(imgUrl, "ai-horde-img2img-direct", filterId);
+                    } else {
+                      respondWithImage(buildPollinationsUrl(fullPrompt), "pollinations-fallback", filterId);
+                    }
+                  }
+                );
+                return;
+              }
+              setTimeout(pollStatus, 2000);
+            }
+          );
+        }
+        setTimeout(pollStatus, 2000);
+      }
+    );
+  } catch (e) {
+    respondWithImage(buildPollinationsUrl("aesthetic dreamy portrait"), "pollinations-safe-fallback", "");
+  }
+})();
 `;
 }
 
@@ -525,7 +1283,11 @@ const PROBE_URL = "${cleanUrl}/api/locket/mitm-probe";
 const targetUrl = $request.url || "";
 const ua = $request.headers["User-Agent"] || $request.headers["user-agent"] || "";
 
-if (targetUrl.includes("analytics.locketcamera.com") || (!ua.includes("Locket") && !targetUrl.includes("locket"))) {
+if (
+  targetUrl.includes("analytics.locketcamera.com") ||
+  targetUrl.includes("cdn.locketcamera.com") ||
+  (!ua.includes("Locket") && !targetUrl.includes("locket"))
+) {
   $done({});
 } else {
   let keys = [];
@@ -601,10 +1363,11 @@ $httpClient.post(
 }
 
 export interface ConfMergeOptions {
-  includeYoutubeAdblock: boolean;
   includeGoldUnlock: boolean;
   usePatchedForceGold?: boolean;
   enableTrafficProbe?: boolean;
+  directNoServer?: boolean;
+  scriptBaseUrl?: string;
   aiScriptUrl: string;
   aiPattern?: string;
 }
@@ -613,19 +1376,34 @@ export function generateMergedLocketConf(
   serverUrl: string,
   client: ProxyClient,
   options: ConfMergeOptions = {
-    includeYoutubeAdblock: true,
     includeGoldUnlock: true,
     usePatchedForceGold: true,
     enableTrafficProbe: false,
+    directNoServer: false,
+    scriptBaseUrl: '',
     aiScriptUrl: '',
     aiPattern: DEFAULT_SHADOWROCKET_AI_PATTERN,
   }
 ): string {
   const cleanServer = normalizeServerUrl(serverUrl) || 'https://your-free-locket-ai.onrender.com';
-  const scriptSrc = options.aiScriptUrl.trim() || `${cleanServer}/scripts/locket_ai_redirect.js?client=${client}`;
+  const rawBase = normalizeGitRawScriptsUrl(options.scriptBaseUrl || '');
+  const scriptOrigin = rawBase || `${cleanServer}/scripts`;
+  const directNoServer = Boolean(options.directNoServer);
+
+  const scriptSrc =
+    options.aiScriptUrl.trim() ||
+    (directNoServer
+      ? `${scriptOrigin}/locket_ai_direct.js`
+      : rawBase
+        ? `${scriptOrigin}/locket_ai_redirect.js`
+        : `${cleanServer}/scripts/locket_ai_redirect.js?client=${client}`);
+
+  const filterUnlockSrc = `${scriptOrigin}/locket_filter_unlock.js`;
+  const locketFixSrc = `${scriptOrigin}/locketfix8.js`;
+  const locketHeaderSrc = `${scriptOrigin}/header7.js`;
   const forceGoldSrc =
     options.usePatchedForceGold !== false
-      ? `${cleanServer}/scripts/forceGold4.3.js`
+      ? `${scriptOrigin}/forceGold4.3.js`
       : 'https://raw.githubusercontent.com/vdatdv/LocketGold/main/scripts/forceGold4.3.js';
   const aiPattern = (options.aiPattern || DEFAULT_SHADOWROCKET_AI_PATTERN).trim();
 
@@ -633,98 +1411,201 @@ export function generateMergedLocketConf(
     const rewriteLines: string[] = [];
     if (options.includeGoldUnlock) {
       rewriteLines.push(
-        `^https:\\/\\/api\\.revenuecat\\.com\\/.+\\/(receipts$|subscribers\\/[^/]+$) url script-response-body https://raw.githubusercontent.com/vdatdv/LocketGold/main/scripts/locketfix8.js`,
-        `^https:\\/\\/api\\.revenuecat\\.com\\/.+\\/(receipts|subscribers) url script-request-header https://raw.githubusercontent.com/vdatdv/LocketGold/main/scripts/header7.js`,
-        `^https:\\/\\/firebaseremoteconfig\\.googleapis\\.com\\/v1\\/projects\\/locket-4252a\\/.+ url script-response-body ${forceGoldSrc}`
+        `^https:\\/\\/api\\.revenuecat\\.com\\/.+\\/(receipts$|subscribers\\/[^/]+$) url script-response-body ${locketFixSrc}`,
+        `^https:\\/\\/api\\.revenuecat\\.com\\/.+\\/(receipts|subscribers) url script-request-header ${locketHeaderSrc}`,
+        `^https:\\/\\/firebaseremoteconfig\\.googleapis\\.com\\/v1\\/projects\\/locket-4252a\\/.+ url script-response-body ${forceGoldSrc}`,
+        `${LOCKET_FILTER_UNLOCK_PATTERN} url script-request-header ${filterUnlockSrc}`,
+        `${LOCKET_FILTER_UNLOCK_PATTERN} url script-response-body ${filterUnlockSrc}`
       );
     }
     rewriteLines.push(`${aiPattern} url script-analyze-echo-response ${scriptSrc}`);
 
-    return `# Quantumult X Configuration - Locket Gold + Free AI Filter Server
+    return `# Quantumult X Configuration - 100% Locket Gold + In-App Filter AI
 [rewrite_local]
 ${rewriteLines.join('\n')}
 
 [mitm]
-hostname = api.revenuecat.com, firebaseremoteconfig.googleapis.com, api.locketcamera.com, *.locketcamera.com, us-central1-locket-4252a.cloudfunctions.net, *.cloudfunctions.net, *-uc.a.run.app
+hostname = api.revenuecat.com, firebaseremoteconfig.googleapis.com, -analytics.locketcamera.com, -cdn.locketcamera.com, api.locketcamera.com, us-central1-locket-4252a.cloudfunctions.net, *.cloudfunctions.net, *-uc.a.run.app
 `;
   }
-
-  const youtubeSection = options.includeYoutubeAdblock
-    ? `[Rule]
-AND,((DOMAIN-SUFFIX,googlevideo.com),(PROTOCOL,UDP)),REJECT
-AND,((DOMAIN,youtubei.googleapis.com),(PROTOCOL,UDP)),REJECT
-FINAL,DIRECT
-
-[URL Rewrite]
-(^https?:\\/\\/[\\w-]+\\.googlevideo\\.com\\/(?!dclk_video_ads).+?)&ctier=L(&.+?),ctier,(.+) $1$2$3 302
-^https?:\\/\\/[\\w-]+\\.googlevideo\\.com\\/(?!(dclk_video_ads|videoplayback\\?)).+&oad _ reject-200
-^https?:\\/\\/(www|s)\\.youtube\\.com\\/api\\/stats\\/ads _ reject-200
-^https?:\\/\\/(www|s)\\.youtube\\.com\\/(pagead|ptracking) _ reject-200
-^https?:\\/\\/s\\.youtube\\.com\\/api\\/stats\\/qoe\\?adcontext _ reject-200
-
-`
-    : `[Rule]
-FINAL,DIRECT
-
-`;
 
   const scriptLines: string[] = [];
-  if (options.includeYoutubeAdblock) {
-    scriptLines.push(
-      `youtube_ad = type=http-response, pattern=^https:\\/\\/youtubei\\.googleapis\\.com\\/youtubei\\/v1\\/(browse|next|player|search|reel\\/reel_watch_sequence|guide|account\\/get_setting|get_watch), requires-body=true, max-size=-1, binary-body-mode=true, script-path=https://raw.githubusercontent.com/vdatdv/LocketGold/main/youtube/youtube-ad.js, argument="{\\"lyricLang\\":null,\\"captionLang\\":null,\\"blockUpload\\":true,\\"blockImmersive\\":true,\\"debug\\":false}"`
-    );
-  }
   if (options.includeGoldUnlock) {
     scriptLines.push(
-      `revenuecat = type=http-response, pattern=^https:\\/\\/api\\.revenuecat\\.com\\/.+\\/(receipts$|subscribers\\/[^/]+$), script-path=https://raw.githubusercontent.com/vdatdv/LocketGold/main/scripts/locketfix8.js, requires-body=true, max-size=-1, timeout=60`,
-      `deleteHeader = type=http-request, pattern=^https:\\/\\/api\\.revenuecat\\.com\\/.+\\/(receipts|subscribers), script-path=https://raw.githubusercontent.com/vdatdv/LocketGold/main/scripts/header7.js, timeout=60`,
-      `locket_rc = type=http-response, pattern=^https:\\/\\/firebaseremoteconfig\\.googleapis\\.com\\/v1\\/projects\\/locket-4252a\\/.+, script-path=${forceGoldSrc}, requires-body=true, max-size=-1, timeout=60`
+      `revenuecat = type=http-response, pattern=^https:\\/\\/api\\.revenuecat\\.com\\/.+\\/(receipts$|subscribers\\/[^/]+$), script-path=${locketFixSrc}, requires-body=true, max-size=-1, timeout=60`,
+      `deleteHeader = type=http-request, pattern=^https:\\/\\/api\\.revenuecat\\.com\\/.+\\/(receipts|subscribers), script-path=${locketHeaderSrc}, timeout=60`,
+      `locket_rc = type=http-response, pattern=^https:\\/\\/firebaseremoteconfig\\.googleapis\\.com\\/v1\\/projects\\/locket-4252a\\/.+, script-path=${forceGoldSrc}, requires-body=true, max-size=-1, timeout=60`,
+      `locket_filter_unlock_req = type=http-request, pattern=${LOCKET_FILTER_UNLOCK_PATTERN}, script-path=${filterUnlockSrc}, requires-body=false, max-size=-1, timeout=30`,
+      `locket_filter_unlock_res = type=http-response, pattern=${LOCKET_FILTER_UNLOCK_PATTERN}, script-path=${filterUnlockSrc}, requires-body=true, max-size=-1, timeout=30`
     );
   }
-  if (options.enableTrafficProbe) {
+  if (options.enableTrafficProbe && !directNoServer) {
     scriptLines.push(
-      `locket_probe = type=http-request, pattern=^https:\\/\\/(?!analytics\\.).*(locketcamera\\.com|cloudfunctions\\.net|uc\\.a\\.run\\.app)\\/.*, script-path=${cleanServer}/scripts/locket_traffic_probe.js, requires-body=true, max-size=1048576, timeout=5`,
+      `locket_probe = type=http-request, pattern=^https:\\/\\/(?!(analytics|cdn)\\.).*(locketcamera\\.com|cloudfunctions\\.net|uc\\.a\\.run\\.app)\\/.*, script-path=${cleanServer}/scripts/locket_traffic_probe.js, requires-body=true, max-size=1048576, timeout=5`,
       `locket_probe_res = type=http-response, pattern=^https:\\/\\/api\\.locketcamera\\.com\\/(getFilters|.*[Ff]ilter.*), script-path=${cleanServer}/scripts/locket_response_probe.js, requires-body=true, max-size=1048576, timeout=5`
     );
   }
-  scriptLines.push(
-    `locket_ai_free = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`
-  );
+  if (directNoServer) {
+    scriptLines.push(
+      `locket_ai_filter_direct = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=0, timeout=60`
+    );
+  } else {
+    scriptLines.push(
+      `locket_ai_filter_req = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`,
+      `locket_ai_filter_res = type=http-response, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`
+    );
+  }
 
   const mitmHosts = [
     'api.revenuecat.com',
     'firebaseremoteconfig.googleapis.com',
     '-analytics.locketcamera.com',
+    '-cdn.locketcamera.com',
     'api.locketcamera.com',
-    '*.locketcamera.com',
     'us-central1-locket-4252a.cloudfunctions.net',
     '*.cloudfunctions.net',
     '*-uc.a.run.app',
   ];
-  if (options.includeYoutubeAdblock) {
-    mitmHosts.push(
-      '-redirector*.googlevideo.com',
-      '*.googlevideo.com',
-      'www.youtube.com',
-      's.youtube.com',
-      'youtubei.googleapis.com'
-    );
-  }
 
-  return `# Locket Gold + Free AI Filter Server (${client.toUpperCase()})
-# Kết nối trực tiếp tính năng Filter & Tạo ảnh AI trong app Locket qua Shadowrocket MITM
+  return `# Locket Gold + In-App Filter AI (${client.toUpperCase()})
+# 100% thuần Locket (${directNoServer ? 'Thuần GitHub Raw · 0 Server' : rawBase ? 'GitHub Raw + Backend Img2Img' : 'Self-Hosted'})
 [General]
+bypass-system = true
 loglevel = notify
+skip-proxy = 192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12, localhost, *.local, captive.apple.com
 
-${youtubeSection}[Script]
+[Rule]
+FINAL,DIRECT
+
+[Script]
 ${scriptLines.join('\n')}
 
 [MITM]
+h2 = true
 hostname = ${mitmHosts.join(', ')}
 `;
 }
 
 export function generateStandaloneServerCode(platform: DeployPlatform): string {
+  if (platform === 'worker') {
+    return `// worker.js — Cloudflare Worker 0đ (Không Sleep, Không Giao Diện Web)
+// Chỉ cần dán 1 file này lên dash.cloudflare.com -> Workers & Pages -> Deploy
+const FILTER_PROMPTS = {
+  flower_crown: "wearing a delicate fresh pastel flower crown on head, dreamy soft sunlight glow",
+  cutesy: "soft rosy blush cheeks, adorable kawaii aesthetic, glowing skin",
+  sticker_face: "playful cute pastel face stickers on cheeks, sparkling eyes",
+  love_bug: "cute floating pink hearts around portrait, warm rosy lighting",
+  princess: "wearing a sparkling crystal diamond tiara crown, fairytale royal glow",
+  disco_lights: "colorful disco ball light reflections, party neon aesthetic",
+  cash_money: "wearing dark sunglasses with floating dollar bills, studio lighting",
+  blonde_bleached: "platinum blonde bleached hairstyle transformation",
+  bob_cut: "chic sleek chin-length bob haircut transformation",
+  okay_wig: "wearing a funny colorful wig, playful portrait",
+  looks_maxxing: "sharp chiseled jawline dramatic black and white portrait",
+  wedding: "dressed in elegant white wedding attire, soft romantic daylight",
+  clown: "colorful circus clown face paint and red nose",
+  photobooth: "Korean 4-cut photobooth photo strip grid, 4 playful poses",
+  pb_strawberry: "sweet strawberry frame 4-cut photobooth collage, pastel pink",
+  santa_cutout: "wearing a cozy red Santa hat, warm Christmas lights bokeh"
+};
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+async function runImg2ImgHorde(prompt, cleanBase64) {
+  const submit = await fetch("https://aihorde.net/api/v2/generate/async", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: "0000000000", "Client-Agent": "LocketCFWorker:1.0" },
+    body: JSON.stringify({
+      prompt,
+      params: { width: 512, height: 640, steps: 20, n: 1, sampler_name: "k_euler_a", denoising_strength: 0.58 },
+      source_image: cleanBase64,
+      source_processing: "img2img",
+      nsfw: false,
+      censor_nsfw: true,
+      r2: true
+    })
+  });
+  if (!submit.ok) throw new Error("Horde submit " + submit.status);
+  const { id } = await submit.json();
+  if (!id) throw new Error("Missing Horde id");
+
+  for (let i = 0; i < 14; i++) {
+    await new Promise((r) => setTimeout(r, 1500));
+    const chk = await (await fetch("https://aihorde.net/api/v2/generate/check/" + id)).json();
+    if (chk.faulted) throw new Error("Horde faulted");
+    if (chk.done) {
+      const st = await (await fetch("https://aihorde.net/api/v2/generate/status/" + id)).json();
+      const imgUrl = st.generations?.[0]?.img;
+      if (imgUrl && imgUrl.startsWith("http")) return imgUrl;
+      throw new Error("Empty Horde url");
+    }
+  }
+  throw new Error("Horde timeout");
+}
+
+export default {
+  async fetch(request) {
+    const cors = {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Locket-Proxy"
+    };
+    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+    if (request.method === "GET") {
+      return Response.json({ ok: true, service: "Locket In-App Filter Worker (0đ)", img2img: true }, { headers: cors });
+    }
+
+    try {
+      const raw = await request.json().catch(() => ({}));
+      const body = (raw && raw.data && typeof raw.data === "object") ? raw.data : raw;
+      let filterId = String(body.filter_id || body.filterId || body.sticker_id || "").trim().toLowerCase();
+      filterId = filterId.replace(/^stk_dio_/, "").replace(/^stk_/, "");
+      const hint = FILTER_PROMPTS[filterId] || (filterId ? filterId.replace(/_/g, " ") + " filter" : "aesthetic portrait");
+      const rawPrompt = String(body.prompt || body.custom_prompt || body.text || "").trim();
+      const fullPrompt = [rawPrompt, hint, "authentic candid 35mm portrait"].filter(Boolean).join(", ");
+
+      let cleanBase64 = String(body.image_base64 || body.imageBase64 || body.photo_base64 || body.base64 || "")
+        .replace(/^data:image\\/[a-zA-Z0-9+.-]+;base64,/, "")
+        .trim();
+
+      const imgUrlField = String(body.image_url || body.imageUrl || body.source_url || body.photo_url || "");
+      if (!cleanBase64 && /^https?:\\/\\//i.test(imgUrlField)) {
+        const imgRes = await fetch(imgUrlField);
+        if (imgRes.ok) cleanBase64 = arrayBufferToBase64(await imgRes.arrayBuffer());
+      }
+
+      let outputUrl = "";
+      let provider = "pollinations-flux";
+      if (cleanBase64.length > 64) {
+        try {
+          outputUrl = await runImg2ImgHorde(fullPrompt, cleanBase64);
+          provider = "ai-horde-img2img";
+        } catch {}
+      }
+      if (!outputUrl) {
+        const seed = Math.floor(Math.random() * 1000000);
+        outputUrl = "https://image.pollinations.ai/prompt/" + encodeURIComponent(fullPrompt) + "?width=768&height=1024&model=flux&seed=" + seed + "&nologo=true";
+      }
+
+      const dataNode = { status: 200, outputUrl, output_url: outputUrl, url: outputUrl, imageUrl: outputUrl, image_url: outputUrl };
+      const payload = { ok: true, status: 200, provider, filter_id: filterId || undefined, ...dataNode, data: dataNode };
+      return Response.json({ ...payload, result: payload }, { status: 200, headers: cors });
+    } catch (err) {
+      return Response.json({ ok: false, error: err.message }, { status: 500, headers: cors });
+    }
+  }
+};
+`;
+  }
+
   if (platform === 'vercel') {
     return `// api/locket-ai.js — Deploy miễn phí lên Vercel (Hỗ trợ Filter Locket & Text-to-Image)
 const FILTER_PROMPTS = {

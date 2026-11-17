@@ -7,10 +7,9 @@ interface TopBarProps {
 }
 
 const TAB_TITLES: Record<AppTab, string> = {
-  studio: 'Xưởng tạo ảnh AI & Xem trước Locket',
-  mitm: 'Cấu hình Shadowrocket & MITM Script',
+  mitm: 'Cấu hình Shadowrocket & GitHub Raw (Thuần Locket)',
   logs: 'Kiểm tra Endpoint & Nhật ký Server',
-  deploy: 'Deploy Server Miễn Phí',
+  deploy: 'Xuất file GitHub Raw, Cloudflare Worker & Render',
 };
 
 export function TopBar({ activeTab, onDownloadConf }: TopBarProps) {

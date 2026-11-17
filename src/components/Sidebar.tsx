@@ -1,37 +1,35 @@
-import { Activity, CloudUpload, ImagePlus, ShieldCheck } from 'lucide-react';
+import { Activity, CloudUpload, ShieldCheck } from 'lucide-react';
 import type { AppTab } from '../types';
 
 interface SidebarProps {
   activeTab: AppTab;
   onSelectTab: (tab: AppTab) => void;
-  generatedCount: number;
 }
 
 const NAV_ITEMS: Array<{
   id: AppTab;
   label: string;
-  icon: typeof ImagePlus;
+  icon: typeof ShieldCheck;
 }> = [
-  { id: 'studio', label: 'Tạo ảnh AI', icon: ImagePlus },
-  { id: 'mitm', label: 'Shadowrocket MITM', icon: ShieldCheck },
+  { id: 'mitm', label: 'Shadowrocket & Git Raw', icon: ShieldCheck },
   { id: 'logs', label: 'API & Nhật ký', icon: Activity },
-  { id: 'deploy', label: 'Deploy Miễn Phí', icon: CloudUpload },
+  { id: 'deploy', label: 'Git Raw / Worker / Render', icon: CloudUpload },
 ];
 
-export function Sidebar({ activeTab, onSelectTab, generatedCount }: SidebarProps) {
+export function Sidebar({ activeTab, onSelectTab }: SidebarProps) {
   return (
-    <aside className="w-full lg:w-60 lg:shrink-0 border-b lg:border-b-0 lg:border-r border-slate-200 bg-white flex flex-col justify-between">
+    <aside className="w-full lg:w-64 lg:shrink-0 border-b lg:border-b-0 lg:border-r border-slate-200 bg-white flex flex-col justify-between">
       <div>
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between lg:block">
           <span className="font-display text-base font-bold tracking-tight text-slate-900 whitespace-nowrap">
-            Locket AI Server
+            Locket In-App Filter AI
           </span>
-          <span className="lg:hidden text-xs text-slate-500 tabular-nums">
-            {generatedCount} ảnh
+          <span className="lg:hidden text-xs font-medium text-emerald-700">
+            0đ · Thuần Locket
           </span>
         </div>
 
-        <nav aria-label="Điều hướng chính" className="p-3 grid grid-cols-2 sm:flex lg:flex-col gap-1.5">
+        <nav aria-label="Điều hướng chính" className="p-3 grid grid-cols-1 sm:grid-cols-3 lg:flex lg:flex-col gap-1.5">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -60,14 +58,12 @@ export function Sidebar({ activeTab, onSelectTab, generatedCount }: SidebarProps
 
       <div className="hidden lg:block p-4 border-t border-slate-200 text-xs text-slate-500 space-y-1.5">
         <div className="flex items-center justify-between">
-          <span>Chế độ chi phí</span>
-          <span className="font-medium text-emerald-700">0đ · Miễn phí</span>
+          <span>Chế độ chạy</span>
+          <span className="font-medium text-slate-800">Trực tiếp trên Locket</span>
         </div>
         <div className="flex items-center justify-between">
-          <span>Ảnh đã tạo phiên này</span>
-          <span className="font-mono font-medium text-slate-900 tabular-nums">
-            {generatedCount}
-          </span>
+          <span>Chi phí AI</span>
+          <span className="font-medium text-emerald-700">0đ · Miễn phí</span>
         </div>
       </div>
     </aside>

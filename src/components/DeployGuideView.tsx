@@ -9,14 +9,25 @@ const PLATFORMS: Array<{
   steps: string[];
 }> = [
   {
+    id: 'worker',
+    label: 'Cloudflare Worker (0đ · Không Sleep)',
+    filename: 'worker.js',
+    steps: [
+      'Đăng nhập dash.cloudflare.com (miễn phí, không cần thẻ) -> Workers & Pages -> Create Worker.',
+      'Dán toàn bộ code worker.js bên dưới vào trình soạn thảo -> bấm Deploy.',
+      'Lấy link https://ten-worker.workers.dev dán vào ô URL API ở tab Shadowrocket & Git Raw.',
+      'Worker chạy tức thì 24/7 không bị ngủ như Render Free, không có giao diện web thừa.',
+    ],
+  },
+  {
     id: 'render',
     label: 'Render.com (0đ)',
     filename: 'server-free.mjs',
     steps: [
-      'Tạo repository GitHub mới và tải code lên (tải trọn bộ ZIP bên trên để có đủ cả web, Locket.conf và forceGold4.3.js).',
-      'Vào render.com → New Web Service → chọn Free Tier ($0/month, Region Singapore).',
-      'Build Command: npm install --include=dev --legacy-peer-deps && npm run build · Start Command: npx tsx server.ts (Env: NODE_ENV=production).',
-      'Sau khi deploy xong, copy link https://ten-app.onrender.com dán vào tab Shadowrocket MITM.',
+      'Tải bộ ZIP bên trên và đẩy lên repo GitHub của bạn (có sẵn thư mục github-raw/ + .npmrc).',
+      'Vào render.com -> New Web Service -> chọn Free Tier ($0/month, Region Singapore).',
+      'Build Command: npm install --include=dev && npm run build · Start Command: npx tsx server.ts.',
+      'Dán link onrender.com vào cấu hình GitHub Raw (không cần mở trình duyệt web nữa).',
     ],
   },
   {
@@ -38,7 +49,7 @@ const PLATFORMS: Array<{
       'Tạo thư mục dự án mới có đường dẫn api/locket-ai.js bằng đoạn mã bên dưới.',
       'Chạy lệnh npx vercel --prod hoặc push lên GitHub rồi import vào vercel.com (Free Hobby Plan).',
       'Endpoint Shadowrocket của bạn sẽ là https://ten-project.vercel.app/api/locket-ai.',
-      'Trong script Shadowrocket, đặt FREE_AI_SERVER trỏ tới endpoint này.',
+      'Trong script locket_ai_redirect.js trên GitHub Raw, trỏ TARGET_ENDPOINT tới URL này.',
     ],
   },
   {
@@ -48,14 +59,14 @@ const PLATFORMS: Array<{
     steps: [
       'Cài Node.js >= 18 (trên Android dùng pkg install nodejs; trên PC tải từ nodejs.org).',
       'Lưu file server-free.mjs vào máy và chạy lệnh: node server-free.mjs.',
-      'Nếu muốn iPhone bên ngoài truy cập được, chạy thêm cloudflared tunnel --url http://localhost:3000 (miễn phí, có sẵn HTTPS).',
+      'Nếu muốn iPhone bên ngoài truy cập được, chạy thêm cloudflared tunnel --url http://localhost:3000.',
       'Lấy link trycloudflare.com dán vào Shadowrocket MITM để test ngay lập tức.',
     ],
   },
 ];
 
 export function DeployGuideView() {
-  const [platform, setPlatform] = useState<DeployPlatform>('render');
+  const [platform, setPlatform] = useState<DeployPlatform>('worker');
   const [copied, setCopied] = useState(false);
 
   const activePlatform = PLATFORMS.find((p) => p.id === platform) ?? PLATFORMS[0];
@@ -76,7 +87,7 @@ export function DeployGuideView() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = activePlatform.filename.split('/').pop() || 'server-free.mjs';
+    link.download = activePlatform.filename.split('/').pop() || 'worker.js';
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -91,14 +102,18 @@ export function DeployGuideView() {
           <div className="flex items-center gap-2">
             <Archive className="w-4 h-4 text-amber-700 shrink-0" aria-hidden="true" />
             <h2 className="font-display text-base font-semibold text-slate-900">
-              Tải trọn bộ mã nguồn Project (.zip) để Deploy Render / Koyeb
+              Tải trọn bộ GitHub Raw + Worker + Server (.zip)
             </h2>
           </div>
           <p className="text-xs text-slate-600 leading-relaxed max-w-2xl">
-            Gồm đầy đủ <code className="font-mono bg-slate-100 px-1 rounded">server.ts</code>, giao diện web,{' '}
-            <code className="font-mono bg-slate-100 px-1 rounded">forceGold4.3.js</code>,{' '}
-            <code className="font-mono bg-slate-100 px-1 rounded">locket_ai_redirect.js</code> và{' '}
-            <code className="font-mono bg-slate-100 px-1 rounded">README.md</code> hướng dẫn điền Build/Start Command trên Render.
+            Gồm sẵn thư mục <code className="font-mono bg-slate-100 px-1 rounded">github-raw/</code> (chứa{' '}
+            <code className="font-mono bg-slate-100 px-1 rounded">Locket_Direct_GitRaw.conf</code> bản 0 server,{' '}
+            <code className="font-mono bg-slate-100 px-1 rounded">Locket_Backend_GitRaw.conf</code>,{' '}
+            <code className="font-mono bg-slate-100 px-1 rounded">forceGold4.3.js</code> đã vá,{' '}
+            <code className="font-mono bg-slate-100 px-1 rounded">locket_filter_unlock.js</code>,{' '}
+            <code className="font-mono bg-slate-100 px-1 rounded">locket_ai_direct.js</code>), file{' '}
+            <code className="font-mono bg-slate-100 px-1 rounded">cloudflare-worker/worker.js</code> và mã nguồn Render kèm{' '}
+            <code className="font-mono bg-slate-100 px-1 rounded">.npmrc</code>.
           </p>
         </div>
 
@@ -116,10 +131,10 @@ export function DeployGuideView() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-display text-base font-semibold text-slate-900">
-              Mã nguồn Server AI rút gọn (1 file độc lập · 0đ)
+              API xử lý Img2Img chạy ngầm (1 file độc lập · 0đ · Không cần mở Web)
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Dùng trực tiếp Node.js thuần nếu bạn muốn tự host API AI tối giản không kèm giao diện web.
+              Khuyên dùng Cloudflare Worker (không sleep) để kết hợp với Conf Raw trên GitHub của bạn.
             </p>
           </div>
 

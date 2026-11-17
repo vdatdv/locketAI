@@ -5,9 +5,13 @@ import path from 'node:path';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import {
   buildEnhancedPrompt,
+  extractLocketGenerateParams,
+  generateDirectFilterScript,
+  generateFilterUnlockScript,
   generateMergedLocketConf,
   generateMitmRedirectScript,
   generateResponseProbeScript,
+  generateStandaloneServerCode,
   generateTrafficProbeScript,
   getDimensionsForAspectRatio,
   type AspectRatioOption,
@@ -249,17 +253,26 @@ async function fetchFromAiHorde(
     throw new Error('AI Horde did not return job id');
   }
 
-  const deadline = Date.now() + 26000;
+  const deadline = Date.now() + 18000;
+  let polls = 0;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 1500));
+    polls += 1;
     const checkRes = await fetch(
       `https://aihorde.net/api/v2/generate/check/${submitData.id}`,
       { headers: { 'Client-Agent': 'LocketFreeAIServer:1.0:web' } }
     );
     if (!checkRes.ok) continue;
-    const checkData = (await checkRes.json()) as { done?: boolean; faulted?: boolean };
+    const checkData = (await checkRes.json()) as {
+      done?: boolean;
+      faulted?: boolean;
+      wait_time?: number;
+    };
     if (checkData.faulted) {
       throw new Error('AI Horde job faulted');
+    }
+    if (polls >= 2 && typeof checkData.wait_time === 'number' && checkData.wait_time > 35) {
+      throw new Error(`AI Horde queue ${checkData.wait_time}s`);
     }
     if (checkData.done) {
       const statusRes = await fetch(
@@ -297,54 +310,89 @@ async function fetchFromAiHorde(
   throw new Error('AI Horde timeout');
 }
 
-async function handleGenerateRequest(req: Request, res: Response, endpointLabel: string) {
+async function fetchFromPollinationsWithRetry(
+  enhancedPrompt: string,
+  width: number,
+  height: number,
+  model: FreeAiModel
+): Promise<{ imageDataUrl: string; provider: string }> {
+  try {
+    return await fetchFromPollinations(enhancedPrompt, width, height, model);
+  } catch (firstErr) {
+    if (model !== 'turbo') {
+      return await fetchFromPollinations(enhancedPrompt, width, height, 'turbo');
+    }
+    throw firstErr;
+  }
+}
+
+async function fetchRemoteImageAsBase64(imageUrl: string): Promise<string> {
+  if (!/^https?:\/\//i.test(imageUrl)) return '';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(imageUrl, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'LocketFreeAIServer/1.0' },
+    });
+    if (!res.ok) return '';
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.byteLength < 128 || buf.byteLength > 10 * 1024 * 1024) return '';
+    return buf.toString('base64');
+  } catch {
+    return '';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function handleGenerateRequest(
+  req: Request,
+  res: Response,
+  endpointLabel: string,
+  options: { rawImageResponse?: boolean; locketInAppMode?: boolean } = {}
+) {
+  const { rawImageResponse = false, locketInAppMode = false } = options;
   const startedAt = Date.now();
-  const rawBody = (req.body || {}) as Record<string, unknown>;
-  const callablePayload =
-    rawBody.data && typeof rawBody.data === 'object'
-      ? (rawBody.data as Record<string, unknown>)
-      : null;
-  const body = callablePayload || rawBody;
-  const isCallable = Boolean(callablePayload || rawBody.callable);
+  const extracted = extractLocketGenerateParams(req.body);
+  let filterId = extracted.filterId;
+  let rawPrompt = extracted.prompt;
+  const { styleId, aspectRatio, model, originalUrl, bodyKeys } = extracted;
+  let sourceBase64 = extracted.imageBase64;
+  if (!sourceBase64 && extracted.imageUrl) {
+    sourceBase64 = await fetchRemoteImageAsBase64(extracted.imageUrl);
+  }
 
-  const filterId = String(body.filter_id || body.filterId || body.filter || '').trim();
-  const rawPrompt = String(
-    body.prompt || body.custom_prompt || body.text || body.caption || ''
-  ).trim();
-  const styleId = String(body.style || body.preset || 'natural').trim();
-  const aspectRatioRaw = String(body.aspect_ratio || body.aspectRatio || '1:1');
-  const aspectRatio: AspectRatioOption =
-    aspectRatioRaw === '3:4' || aspectRatioRaw === '9:16' ? aspectRatioRaw : '1:1';
-  const modelRaw = String(body.model || 'flux');
-  const model: FreeAiModel =
-    modelRaw === 'turbo' || modelRaw === 'anime' ? modelRaw : 'flux';
-  const sourceBase64 = String(
-    body.image_base64 || body.image || body.photo || body.imageData || ''
-  ).trim();
-  const originalUrl = String(body.original_url || '').trim();
-
-  const hasFilter = Boolean(filterId && filterId !== 'none');
+  let hasFilter = Boolean(filterId && filterId !== 'none');
   if (!rawPrompt && !hasFilter) {
-    const latencyMs = Date.now() - startedAt;
-    const bodyKeys = Object.keys(body).slice(0, 8).join(', ');
-    recordLog({
-      method: req.method,
-      path: endpointLabel,
-      status: 400,
-      latencyMs,
-      provider: 'validation',
-      detail: [
-        'Empty prompt/filter_id',
-        originalUrl ? `from ${originalUrl.replace(/^https?:\/\//, '').slice(0, 70)}` : '',
-        bodyKeys ? `keys: [${bodyKeys}]` : '',
-      ]
-        .filter(Boolean)
-        .join(' · '),
-    });
-    return res.status(400).json({
-      ok: false,
-      error: 'Vui lòng nhập mô tả ảnh (prompt) hoặc chọn một Filter Locket.',
-    });
+    if (locketInAppMode) {
+      if (sourceBase64) {
+        rawPrompt = 'aesthetic portrait enhancement';
+      } else {
+        filterId = 'flower_crown';
+        hasFilter = true;
+      }
+    } else {
+      const latencyMs = Date.now() - startedAt;
+      recordLog({
+        method: req.method,
+        path: endpointLabel,
+        status: 400,
+        latencyMs,
+        provider: 'validation',
+        detail: [
+          'Empty prompt/filter_id',
+          originalUrl ? `from ${originalUrl.replace(/^https?:\/\//, '').slice(0, 70)}` : '',
+          bodyKeys.length ? `keys: [${bodyKeys.join(', ')}]` : '',
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      });
+      return res.status(400).json({
+        ok: false,
+        error: 'Vui lòng nhập mô tả ảnh (prompt) hoặc chọn một Filter Locket.',
+      });
+    }
   }
 
   const { width, height } = getDimensionsForAspectRatio(aspectRatio);
@@ -363,10 +411,10 @@ async function handleGenerateRequest(req: Request, res: Response, endpointLabel:
       provider = hordeImg2Img.provider;
     } catch {
       try {
-        const generated = await fetchFromPollinations(enhancedPrompt, width, height, model);
+        const generated = await fetchFromPollinationsWithRetry(enhancedPrompt, width, height, model);
         imageDataUrl = generated.imageDataUrl;
         provider = generated.provider;
-        notice = 'Node Img2Img miễn phí đang quá tải; đã tạo ảnh theo mô tả filter.';
+        notice = 'Node Img2Img miễn phí đang quá tải; đã tạo ảnh AI theo mô tả filter.';
       } catch (fallbackErr) {
         imageDataUrl = buildOfflinePreviewSvgDataUrl(rawPrompt, width, height, styleId, filterId);
         provider = 'local-svg-fallback';
@@ -378,7 +426,7 @@ async function handleGenerateRequest(req: Request, res: Response, endpointLabel:
     }
   } else {
     try {
-      const generated = await fetchFromPollinations(enhancedPrompt, width, height, model);
+      const generated = await fetchFromPollinationsWithRetry(enhancedPrompt, width, height, model);
       imageDataUrl = generated.imageDataUrl;
       provider = generated.provider;
     } catch {
@@ -422,13 +470,33 @@ async function handleGenerateRequest(req: Request, res: Response, endpointLabel:
     detail: detailTags,
   });
 
+  if (rawImageResponse) {
+    const cached = mediaCache.get(mediaId);
+    if (cached) {
+      res.setHeader('Content-Type', cached.mime);
+      res.setHeader('X-Locket-Provider', provider);
+      return res.status(200).send(cached.buffer);
+    }
+  }
+
   const base64Only = imageDataUrl.includes(',') ? imageDataUrl.split(',')[1] : '';
+  const dataNode = {
+    status: 200,
+    outputUrl: hostedUrl,
+    output_url: hostedUrl,
+    url: hostedUrl,
+    imageUrl: hostedUrl,
+    image_url: hostedUrl,
+  };
   const responsePayload = {
     ok: true,
+    status: 200,
     provider,
     model,
     filter_id: hasFilter ? filterId : undefined,
     img2img: hasSourceImage,
+    outputUrl: hostedUrl,
+    output_url: hostedUrl,
     url: hostedUrl,
     imageUrl: hostedUrl,
     image_url: hostedUrl,
@@ -444,10 +512,11 @@ async function handleGenerateRequest(req: Request, res: Response, endpointLabel:
     image: base64Only,
     notice: notice || undefined,
     latencyMs,
+    data: dataNode,
   };
 
   return res.status(200).json(
-    isCallable
+    extracted.isCallable || locketInAppMode
       ? { ...responsePayload, result: responsePayload }
       : responsePayload
   );
@@ -495,8 +564,10 @@ async function startServer() {
       promptEnhancer: hasGeminiPromptTranslator ? 'gemini-4-hydrogen' : 'rule-based',
       endpoints: {
         generate: '/api/ai/generate',
+        generateFilteredImage: '/generateFilteredImage',
         locketProxy: '/api/locket/ai-generate',
         mitmScript: '/scripts/locket_ai_redirect.js',
+        filterUnlockScript: '/scripts/locket_filter_unlock.js',
         forceGoldScript: '/scripts/forceGold4.3.js',
         media: '/api/locket/media/:id.jpg',
       },
@@ -515,28 +586,74 @@ async function startServer() {
     return res.send(item.buffer);
   });
 
-  // Free AI Image & Filter Generation
+  // Free AI Image & Filter Generation (Web Studio UI)
   app.post('/api/ai/generate', async (req, res) => {
-    await handleGenerateRequest(req, res, '/api/ai/generate');
+    await handleGenerateRequest(req, res, '/api/ai/generate', { rawImageResponse: false });
+  });
+
+  // Direct In-App Locket Filter & Photobooth Endpoint (intercepted from generateFilteredImage)
+  app.post(['/generateFilteredImage', '/v1/generateFilteredImage'], async (req, res) => {
+    await handleGenerateRequest(req, res, '/generateFilteredImage', {
+      rawImageResponse: false,
+      locketInAppMode: true,
+    });
   });
 
   // Locket-Compatible MITM Endpoint
   app.post('/api/locket/ai-generate', async (req, res) => {
-    await handleGenerateRequest(req, res, '/api/locket/ai-generate');
+    await handleGenerateRequest(req, res, '/api/locket/ai-generate', {
+      rawImageResponse: false,
+      locketInAppMode: true,
+    });
   });
 
-  // Patched forceGold4.3.js Remote Config script with AI filter flags enabled
-  app.get('/scripts/forceGold4.3.js', (req, res) => {
+  // Direct binary image endpoint for Apple Shortcuts (Phím tắt iOS) -> Save to Photos -> Post on Locket
+  app.post('/api/locket/ai-generate-image', async (req, res) => {
+    await handleGenerateRequest(req, res, '/api/locket/ai-generate-image', {
+      rawImageResponse: true,
+    });
+  });
+
+  // Clean self-hosted Locket Filter & Account Unlocker
+  app.get('/scripts/locket_filter_unlock.js', (req, res) => {
     const startedAt = Date.now();
+    const scriptBody = generateFilterUnlockScript();
+    recordLog({
+      method: 'GET',
+      path: '/scripts/locket_filter_unlock.js',
+      status: 200,
+      latencyMs: Date.now() - startedAt,
+      provider: 'script-host',
+      detail: 'Served clean Locket Filter & Gold Account Unlock script',
+    });
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    return res.send(scriptBody);
+  });
+
+  // Self-hosted RevenueCat Gold script & header script
+  app.get('/scripts/locketfix8.js', (_req, res) => {
+    const filePath = path.resolve(process.cwd(), 'public/assets/aistudio/locketfix8_5e38e8cf.js');
+    if (!fs.existsSync(filePath)) return res.status(404).send('// locketfix8.js not found');
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    return res.send(fs.readFileSync(filePath, 'utf-8'));
+  });
+
+  app.get('/scripts/header7.js', (_req, res) => {
+    const filePath = path.resolve(process.cwd(), 'public/assets/aistudio/header7_8b57ec54.js');
+    if (!fs.existsSync(filePath)) return res.status(404).send('// header7.js not found');
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    return res.send(fs.readFileSync(filePath, 'utf-8'));
+  });
+
+  function getPatchedForceGoldBody(): string | null {
     const sourcePath = path.resolve(
       process.cwd(),
       'public/assets/aistudio/forceGold4.3_1321ffca.js'
     );
     if (!fs.existsSync(sourcePath)) {
-      return res.status(404).send('// forceGold4.3 source not found');
+      return null;
     }
-
-    let scriptBody = fs.readFileSync(sourcePath, 'utf-8');
+    const rawSource = fs.readFileSync(sourcePath, 'utf-8');
     const aiFilterPatch = `
 if (typeof obj === "object" && obj && obj.entries && ua.includes("Locket")) {
     try {
@@ -565,10 +682,19 @@ if (typeof obj === "object" && obj && obj.entries && ua.includes("Locket")) {
 }
 $done({ body: JSON.stringify(obj) });`;
 
-    scriptBody = scriptBody.replace(
+    return rawSource.replace(
       /\$done\(\{\s*body:\s*JSON\.stringify\(obj\)\s*\}\);?\s*$/,
       aiFilterPatch
     );
+  }
+
+  // Patched forceGold4.3.js Remote Config script with AI filter flags enabled
+  app.get('/scripts/forceGold4.3.js', (_req, res) => {
+    const startedAt = Date.now();
+    const scriptBody = getPatchedForceGoldBody();
+    if (!scriptBody) {
+      return res.status(404).send('// forceGold4.3 source not found');
+    }
 
     recordLog({
       method: 'GET',
@@ -579,6 +705,22 @@ $done({ body: JSON.stringify(obj) });`;
       detail: 'Served patched forceGold4.3.js (AI Filters + Feature Gates enabled)',
     });
 
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    return res.send(scriptBody);
+  });
+
+  // 100% No-Server Direct Filter AI Script (for pure GitHub Raw hosting)
+  app.get('/scripts/locket_ai_direct.js', (_req, res) => {
+    const startedAt = Date.now();
+    const scriptBody = generateDirectFilterScript();
+    recordLog({
+      method: 'GET',
+      path: '/scripts/locket_ai_direct.js',
+      status: 200,
+      latencyMs: Date.now() - startedAt,
+      provider: 'script-host',
+      detail: 'Served 0-server Direct Filter AI script (AI Horde Img2Img + Pollinations)',
+    });
     res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
     return res.send(scriptBody);
   });
@@ -690,14 +832,17 @@ $done({ body: JSON.stringify(obj) });`;
         : 'shadowrocket';
     const usePatchedForceGold = req.query.patchedForceGold !== '0';
     const enableTrafficProbe = req.query.probe === '1';
+    const directNoServer = req.query.direct === '1';
+    const scriptBaseUrl = typeof req.query.rawBase === 'string' ? req.query.rawBase : '';
     const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
     const host = req.headers.host || `localhost:${PORT}`;
     const origin = `${proto}://${host}`;
     const confBody = generateMergedLocketConf(origin, client, {
-      includeYoutubeAdblock: true,
       includeGoldUnlock: true,
       usePatchedForceGold,
       enableTrafficProbe,
+      directNoServer,
+      scriptBaseUrl,
       aiScriptUrl: '',
     });
 
@@ -707,7 +852,7 @@ $done({ body: JSON.stringify(obj) });`;
       status: 200,
       latencyMs: Date.now() - startedAt,
       provider: 'config-host',
-      detail: `Served merged Locket.conf (${client}${enableTrafficProbe ? ' + probe' : ''})`,
+      detail: `Served Locket.conf (${client}${directNoServer ? ' · direct-0-server' : ''}${enableTrafficProbe ? ' + probe' : ''})`,
     });
 
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -763,6 +908,16 @@ $done({ body: JSON.stringify(obj) });`;
           }
           walkDir(childRel);
         } else if (entry.isFile()) {
+          if (childRel.startsWith('public/assets/aistudio/')) {
+            const allowedAssets = new Set([
+              'forceGold4.3_1321ffca.js',
+              'locketfix8_5e38e8cf.js',
+              'header7_8b57ec54.js',
+            ]);
+            if (!allowedAssets.has(entry.name)) {
+              continue;
+            }
+          }
           zipEntries.push({
             name: childRel,
             data: fs.readFileSync(path.join(rootDir, childRel)),
@@ -774,20 +929,67 @@ $done({ body: JSON.stringify(obj) });`;
     walkDir('src');
     walkDir('public');
 
-    const readmeContent = `# Locket Free AI & Filter Server
+    // Bundle ready-to-push GitHub Raw files + Cloudflare Worker (no web UI needed)
+    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+    const host = req.headers.host || 'locketai.onrender.com';
+    const currentOrigin = `${proto}://${host}`;
+    const gitRawScriptsPlaceholder = 'https://raw.githubusercontent.com/vdatdv/locketAI/main/github-raw/scripts';
 
-## Deploy miễn phí trên Render.com (0đ)
-- Build Command: \`npm install --include=dev --legacy-peer-deps && npm run build\`
-- Start Command: \`npx tsx server.ts\`
-- Environment Variable: \`NODE_ENV=production\`
+    const readAsset = (name: string) => {
+      const p = path.join(rootDir, 'public/assets/aistudio', name);
+      return fs.existsSync(p) ? fs.readFileSync(p, 'utf-8') : '';
+    };
+    const patchedForceGold = getPatchedForceGoldBody() || readAsset('forceGold4.3_1321ffca.js');
+    zipEntries.push(
+      {
+        name: 'github-raw/Locket_Direct_GitRaw.conf',
+        data: Buffer.from(
+          generateMergedLocketConf(currentOrigin, 'shadowrocket', {
+            includeGoldUnlock: true,
+            usePatchedForceGold: true,
+            enableTrafficProbe: false,
+            directNoServer: true,
+            scriptBaseUrl: gitRawScriptsPlaceholder,
+            aiScriptUrl: '',
+          }),
+          'utf8'
+        ),
+      },
+      {
+        name: 'github-raw/Locket_Backend_GitRaw.conf',
+        data: Buffer.from(
+          generateMergedLocketConf(currentOrigin, 'shadowrocket', {
+            includeGoldUnlock: true,
+            usePatchedForceGold: true,
+            enableTrafficProbe: false,
+            directNoServer: false,
+            scriptBaseUrl: gitRawScriptsPlaceholder,
+            aiScriptUrl: '',
+          }),
+          'utf8'
+        ),
+      },
+      { name: 'github-raw/scripts/locketfix8.js', data: Buffer.from(readAsset('locketfix8_5e38e8cf.js'), 'utf8') },
+      { name: 'github-raw/scripts/header7.js', data: Buffer.from(readAsset('header7_8b57ec54.js'), 'utf8') },
+      { name: 'github-raw/scripts/forceGold4.3.js', data: Buffer.from(patchedForceGold, 'utf8') },
+      { name: 'github-raw/scripts/locket_filter_unlock.js', data: Buffer.from(generateFilterUnlockScript(), 'utf8') },
+      { name: 'github-raw/scripts/locket_ai_direct.js', data: Buffer.from(generateDirectFilterScript(), 'utf8') },
+      { name: 'github-raw/scripts/locket_ai_redirect.js', data: Buffer.from(generateMitmRedirectScript(currentOrigin, 'shadowrocket'), 'utf8') },
+      { name: 'cloudflare-worker/worker.js', data: Buffer.from(generateStandaloneServerCode('worker'), 'utf8') }
+    );
 
-## Endpoints sau khi Deploy
-- \`/Locket.conf?client=shadowrocket\` — File cấu hình gộp cho Shadowrocket
-- \`/scripts/forceGold4.3.js\` — Remote Config đã bật AI Filter
-- \`/scripts/locket_ai_redirect.js\` — Script MITM chuyển hướng Filter/AI
-- \`/api/locket/ai-generate\` — API xử lý tạo ảnh AI & Img2Img Filter
-- \`/api/locket/health\` — Kiểm tra trạng thái server
+    const readmeContent = `# Locket In-App AI Filter (Thuần Locket · Hỗ trợ 100% GitHub Raw)
+
+## Cách 1: Dùng 100% file Raw trên GitHub (Không cần Render, không cần Web)
+1. Đẩy thư mục \`github-raw/\` lên repo GitHub của bạn (ví dụ \`vdatdv/locketAI\`).
+2. Trong Shadowrocket -> Config -> bấm **+** -> dán link Raw của \`github-raw/Locket_Direct_GitRaw.conf\` -> **Use Config**.
+3. Trong \`Locket_Direct_GitRaw.conf\`, toàn bộ script (kể cả \`locket_ai_direct.js\` tự gọi AI Horde Img2Img & Pollinations) đều lấy từ GitHub Raw!
+
+## Cách 2: GitHub Raw + API ngầm Img2Img (Render hoặc Cloudflare Worker 0đ)
+- \`cloudflare-worker/worker.js\`: Dán 1 file lên Cloudflare Workers (0đ, không bị sleep, không giao diện web).
+- Hoặc deploy repo này lên Render.com (Build: \`npm install --include=dev && npm run build\`, Start: \`npx tsx server.ts\`) và dùng \`github-raw/Locket_Backend_GitRaw.conf\`.
 `;
+    zipEntries.push({ name: '.npmrc', data: Buffer.from('legacy-peer-deps=true\n', 'utf8') });
     zipEntries.push({ name: 'README.md', data: Buffer.from(readmeContent, 'utf8') });
 
     const zipBuffer = buildStoreZip(zipEntries);

@@ -2,18 +2,27 @@ import { useMemo, useState } from 'react';
 import { Check, Copy, Download, ShieldAlert } from 'lucide-react';
 import {
   DEFAULT_SHADOWROCKET_AI_PATTERN,
+  generateDirectFilterScript,
+  generateFilterUnlockScript,
   generateMergedLocketConf,
   generateMitmRedirectScript,
   isValidServerUrl,
+  normalizeGitRawScriptsUrl,
   normalizeServerUrl,
   type ProxyClient,
 } from '../utils/locketConfig';
+
+export type HostMode = 'git-direct' | 'git-backend' | 'self-hosted';
 
 interface MitmConfigViewProps {
   serverUrl: string;
   onServerUrlChange: (url: string) => void;
   client: ProxyClient;
   onClientChange: (client: ProxyClient) => void;
+  hostMode: HostMode;
+  onHostModeChange: (mode: HostMode) => void;
+  gitRawBaseUrl: string;
+  onGitRawBaseUrlChange: (url: string) => void;
 }
 
 const CLIENTS: Array<{ id: ProxyClient; label: string }> = [
@@ -23,52 +32,105 @@ const CLIENTS: Array<{ id: ProxyClient; label: string }> = [
   { id: 'quantumultx', label: 'Quantumult X' },
 ];
 
+const HOST_MODES: Array<{ id: HostMode; label: string; hint: string }> = [
+  {
+    id: 'git-direct',
+    label: '100% GitHub Raw (0 Server)',
+    hint: 'Toàn bộ .conf & script để trên Git Raw — không cần Render hay web ngoài. Script locket_ai_direct.js gọi thẳng AI Horde Img2Img & Pollinations.',
+  },
+  {
+    id: 'git-backend',
+    label: 'GitHub Raw + API ngầm',
+    hint: '.conf & script để trên Git Raw; riêng endpoint /generateFilteredImage trỏ ngầm về Render hoặc Cloudflare Worker để tải ảnh URL & giữ mặt ổn định nhất.',
+  },
+  {
+    id: 'self-hosted',
+    label: 'Link trực tiếp từ Server',
+    hint: 'Dán thẳng 1 link /Locket.conf từ server Render này vào Shadowrocket (không cần tự up file lên GitHub).',
+  },
+];
+
 export function MitmConfigView({
   serverUrl,
   onServerUrlChange,
   client,
   onClientChange,
+  hostMode,
+  onHostModeChange,
+  gitRawBaseUrl,
+  onGitRawBaseUrlChange,
 }: MitmConfigViewProps) {
   const [includeGoldUnlock, setIncludeGoldUnlock] = useState(true);
   const [usePatchedForceGold, setUsePatchedForceGold] = useState(true);
   const [enableTrafficProbe, setEnableTrafficProbe] = useState(false);
-  const [includeYoutubeAdblock, setIncludeYoutubeAdblock] = useState(true);
   const [aiPattern, setAiPattern] = useState(DEFAULT_SHADOWROCKET_AI_PATTERN);
-  const [codeTab, setCodeTab] = useState<'conf' | 'script'>('conf');
+  const [codeTab, setCodeTab] = useState<'conf' | 'script' | 'unlock'>('conf');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const urlValid = isValidServerUrl(serverUrl);
   const cleanUrl = normalizeServerUrl(serverUrl);
+  const normalizedRawBase = normalizeGitRawScriptsUrl(gitRawBaseUrl);
+  const directNoServer = hostMode === 'git-direct';
 
   const generatedConf = useMemo(
     () =>
       generateMergedLocketConf(cleanUrl, client, {
         includeGoldUnlock,
         usePatchedForceGold,
-        enableTrafficProbe,
-        includeYoutubeAdblock,
+        enableTrafficProbe: hostMode === 'self-hosted' && enableTrafficProbe,
+        directNoServer,
+        scriptBaseUrl: hostMode === 'self-hosted' ? '' : normalizedRawBase,
         aiScriptUrl: '',
         aiPattern,
       }),
     [
       cleanUrl,
       client,
+      hostMode,
+      directNoServer,
+      normalizedRawBase,
       includeGoldUnlock,
       usePatchedForceGold,
       enableTrafficProbe,
-      includeYoutubeAdblock,
       aiPattern,
     ]
   );
 
-  const generatedScript = useMemo(
+  const generatedRedirectScript = useMemo(
     () => generateMitmRedirectScript(cleanUrl, client),
     [cleanUrl, client]
   );
 
+  const generatedDirectScript = useMemo(() => generateDirectFilterScript(), []);
+  const generatedUnlockScript = useMemo(() => generateFilterUnlockScript(), []);
+
+  const activeScriptTabLabel = directNoServer ? 'locket_ai_direct.js' : 'locket_ai_redirect.js';
+
+  const activeCodeBody =
+    codeTab === 'conf'
+      ? generatedConf
+      : codeTab === 'script'
+        ? directNoServer
+          ? generatedDirectScript
+          : generatedRedirectScript
+        : generatedUnlockScript;
+
+  const activeCodeFilename =
+    codeTab === 'conf'
+      ? directNoServer
+        ? 'Locket_Direct_GitRaw.conf'
+        : 'Locket_AI_Free.conf'
+      : codeTab === 'script'
+        ? activeScriptTabLabel
+        : 'locket_filter_unlock.js';
+
   const directImportUrl = `${cleanUrl || 'https://your-server.onrender.com'}/Locket.conf?client=${client}${
+    directNoServer ? '&direct=1' : ''
+  }${hostMode !== 'self-hosted' && normalizedRawBase ? `&rawBase=${encodeURIComponent(normalizedRawBase)}` : ''}${
     usePatchedForceGold ? '' : '&patchedForceGold=0'
-  }${enableTrafficProbe ? '&probe=1' : ''}`;
+  }${hostMode === 'self-hosted' && enableTrafficProbe ? '&probe=1' : ''}`;
+
+  const activeModeInfo = HOST_MODES.find((m) => m.id === hostMode) ?? HOST_MODES[0];
 
   async function copyText(text: string, id: string) {
     try {
@@ -98,40 +160,38 @@ export function MitmConfigView({
       <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 space-y-4">
         <div className="space-y-1">
           <h2 className="font-display text-base font-semibold text-slate-900">
-            Dùng thẳng Filter AI trong app Locket qua Shadowrocket MITM
+            Dùng Filter AI &amp; Photobooth trực tiếp trong app Locket — Hỗ trợ Conf Raw trên Git
           </h2>
           <p className="text-sm text-slate-600 leading-relaxed">
-            Script <code className="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">forceGold4.3.js</code> của bạn đã mở bảng chọn{' '}
-            <code className="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">camera_filter_config</code> (30+ filter như{' '}
-            <em>flower_crown</em>, <em>cutesy</em>, <em>princess</em>, <em>okay_wig</em>...). Khi bạn bấm dùng filter ngay trong app Locket,
-            Shadowrocket MITM sẽ bắt request cùng ảnh selfie và chuyển hướng về server miễn phí này để xử lý Img2Img rồi trả kết quả về app.
+            Không cần mở trang web để tạo ảnh: bạn chỉ cần dùng <code className="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">.conf</code> raw trên GitHub (hoặc link trực tiếp từ server) trong Shadowrocket, rồi mở app Locket chụp &amp; chọn Filter như bình thường.
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
           <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 space-y-1">
-            <p className="text-xs font-semibold text-slate-900">01. Bật Filter &amp; MITM HTTPS</p>
+            <p className="text-xs font-semibold text-slate-900">01. Locket Gold + 55+ Filter/Photobooth</p>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Server cung cấp <code className="font-mono">/scripts/forceGold4.3.js</code> đã bật sẵn{' '}
-              <code className="font-mono">ai_filters_enabled</code> và giải mã{' '}
-              <code className="font-mono">api.locketcamera.com</code>,{' '}
-              <code className="font-mono">us-central1-locket-4252a.cloudfunctions.net</code>.
+              <code className="font-mono">forceGold4.3.js</code> (đã vá), <code className="font-mono">locketfix8.js</code> và <code className="font-mono">header7.js</code> mở khóa Gold, Camera Roll 60s, Caption và toàn bộ bảng Filter trong Locket.
             </p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 space-y-1">
-            <p className="text-xs font-semibold text-slate-900">02. Bắt Filter ID &amp; Ảnh Selfie</p>
+            <p className="text-xs font-semibold text-slate-900">02. Mở quyền Filter Account (Sạch 100%)</p>
             <p className="text-xs text-slate-600 leading-relaxed">
-              <code className="font-mono">locket_ai_redirect.js</code> tách{' '}
-              <code className="font-mono">filter_id</code>, <code className="font-mono">image_base64</code> và{' '}
-              <code className="font-mono">original_url</code> (kể cả Firebase <code className="font-mono">httpsCallable</code>) mà không ảnh hưởng <code className="font-mono">postMomentV2</code>.
+              <code className="font-mono">locket_filter_unlock.js</code> bật <code className="font-mono">can_use_filters</code>, <code className="font-mono">can_generate_filtered_image</code>, xóa khóa <code className="font-mono">is_locked</code> / 403 trên <code className="font-mono">api.locketcamera.com</code>.
             </p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 space-y-1">
-            <p className="text-xs font-semibold text-slate-900">03. Xử lý Img2Img &amp; Trả URL JPEG</p>
+            <p className="text-xs font-semibold text-slate-900">03. Xử lý /generateFilteredImage 0đ</p>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Server ghép filter lên ảnh selfie miễn phí và trả về đủ định dạng ({' '}
-              <code className="font-mono">url</code>, <code className="font-mono">imageUrl</code>,{' '}
-              <code className="font-mono">imageBase64</code>, <code className="font-mono">result</code>) cho app Locket.
+              {directNoServer ? (
+                <>
+                  <code className="font-mono">locket_ai_direct.js</code> gọi thẳng AI Horde Img2Img &amp; Pollinations ngay trong Shadowrocket — <strong>không cần server hay web</strong>.
+                </>
+              ) : (
+                <>
+                  <code className="font-mono">locket_ai_redirect.js</code> chuyển ngầm <code className="font-mono">generateFilteredImage</code> về <code className="font-mono">{cleanUrl || 'API'}/generateFilteredImage</code> xử lý Img2Img giữ mặt thật.
+                </>
+              )}
             </p>
           </div>
         </div>
@@ -139,7 +199,31 @@ export function MitmConfigView({
 
       {/* Interactive Configurator + Code Preview */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-        <div className="xl:col-span-5 bg-white border border-slate-200 rounded-xl p-5 sm:p-6 space-y-5">
+        <div className="xl:col-span-5 min-w-0 bg-white border border-slate-200 rounded-xl p-5 sm:p-6 space-y-5">
+          <div className="space-y-2">
+            <span className="block text-sm font-semibold text-slate-900">Kiểu chạy &amp; Host Conf</span>
+            <div className="grid grid-cols-1 gap-1.5 p-1 bg-slate-100 rounded-lg">
+              {HOST_MODES.map((m) => {
+                const active = hostMode === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => onHostModeChange(m.id)}
+                    className={`px-3 py-2 text-xs font-medium rounded-md transition-colors text-left ${
+                      active
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'bg-transparent text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed">{activeModeInfo.hint}</p>
+          </div>
+
           <div className="space-y-2">
             <span className="block text-sm font-semibold text-slate-900">Ứng dụng Proxy</span>
             <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-lg">
@@ -163,36 +247,57 @@ export function MitmConfigView({
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label htmlFor="server-url-input" className="block text-sm font-semibold text-slate-900">
-              URL Server AI miễn phí của bạn
-            </label>
-            <input
-              id="server-url-input"
-              type="url"
-              value={serverUrl}
-              onChange={(e) => onServerUrlChange(e.target.value)}
-              placeholder="https://my-locket-ai.onrender.com"
-              className={`w-full rounded-lg border px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 ${
-                urlValid
-                  ? 'border-slate-300 focus:border-amber-600 focus:ring-amber-600/20'
-                  : 'border-red-400 focus:border-red-500 focus:ring-red-500/20'
-              }`}
-            />
-            {!urlValid ? (
-              <p className="text-xs text-red-600">
-                Vui lòng nhập URL hợp lệ bắt đầu bằng https:// hoặc http://
-              </p>
-            ) : (
+          {hostMode !== 'self-hosted' && (
+            <div className="space-y-1.5">
+              <label htmlFor="git-raw-input" className="block text-sm font-semibold text-slate-900">
+                Link thư mục Script trên GitHub Raw
+              </label>
+              <input
+                id="git-raw-input"
+                type="url"
+                value={gitRawBaseUrl}
+                onChange={(e) => onGitRawBaseUrlChange(e.target.value)}
+                placeholder="https://raw.githubusercontent.com/vdatdv/locketAI/main/github-raw/scripts"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono focus:border-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-600/20"
+              />
               <p className="text-xs text-slate-500">
-                Dùng URL công khai (Render / Railway / ngrok / Cloudflare Tunnel) để iPhone kết nối được từ bên ngoài.
+                Có thể dán link repo GitHub (vd <code className="font-mono">https://github.com/user/repo</code>), hệ thống tự đổi sang <code className="font-mono">raw.githubusercontent.com</code>.
               </p>
-            )}
-          </div>
+            </div>
+          )}
+
+          {hostMode !== 'git-direct' && (
+            <div className="space-y-1.5">
+              <label htmlFor="server-url-input" className="block text-sm font-semibold text-slate-900">
+                URL API chạy ngầm (Render / Cloudflare Worker)
+              </label>
+              <input
+                id="server-url-input"
+                type="url"
+                value={serverUrl}
+                onChange={(e) => onServerUrlChange(e.target.value)}
+                placeholder="https://locketai.onrender.com"
+                className={`w-full rounded-lg border px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 ${
+                  urlValid
+                    ? 'border-slate-300 focus:border-amber-600 focus:ring-amber-600/20'
+                    : 'border-red-400 focus:border-red-500 focus:ring-red-500/20'
+                }`}
+              />
+              {!urlValid ? (
+                <p className="text-xs text-red-600">
+                  Vui lòng nhập URL hợp lệ bắt đầu bằng https:// hoặc http://
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  Chỉ dùng làm API xử lý ảnh ngầm khi app Locket gọi <code className="font-mono">/generateFilteredImage</code>.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <label htmlFor="ai-pattern-input" className="block text-sm font-semibold text-slate-900">
-              Pattern Regex bắt request AI &amp; Filter
+              Pattern Regex bắt request Filter Locket
             </label>
             <input
               id="ai-pattern-input"
@@ -201,14 +306,11 @@ export function MitmConfigView({
               onChange={(e) => setAiPattern(e.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono text-slate-800 focus:border-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-600/20"
             />
-            <p className="text-xs text-slate-500">
-              Mặc định loại trừ <code className="font-mono">getFilters</code>, <code className="font-mono">postMomentV2</code> và <code className="font-mono">analytics</code> để Locket hoạt động bình thường.
-            </p>
           </div>
 
           <div className="space-y-2.5 pt-1">
             <span className="block text-sm font-semibold text-slate-900">
-              Tuỳ chọn gộp từ Locket.conf gốc
+              Tuỳ chọn cấu hình Locket
             </span>
             <label className="flex items-start gap-2.5 text-sm text-slate-700 cursor-pointer">
               <input
@@ -217,7 +319,7 @@ export function MitmConfigView({
                 onChange={(e) => setIncludeGoldUnlock(e.target.checked)}
                 className="mt-1 rounded border-slate-300 text-amber-600 focus:ring-amber-600"
               />
-              <span>Giữ script mở khoá Gold (locketfix8.js, header7.js, forceGold4.3.js)</span>
+              <span>Mở khoá Locket Gold &amp; Filter Account (locketfix8, header7, forceGold4.3, locket_filter_unlock)</span>
             </label>
             {includeGoldUnlock && (
               <label className="flex items-start gap-2.5 text-sm text-slate-700 cursor-pointer pl-5">
@@ -227,60 +329,55 @@ export function MitmConfigView({
                   onChange={(e) => setUsePatchedForceGold(e.target.checked)}
                   className="mt-1 rounded border-slate-300 text-amber-600 focus:ring-amber-600"
                 />
-                <span>Dùng forceGold4.3.js đã bật AI Filter từ server này</span>
+                <span>Dùng forceGold4.3.js đã bật sẵn Camera Roll &amp; AI flags</span>
               </label>
             )}
-            <label className="flex items-start gap-2.5 text-sm text-slate-700 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={includeYoutubeAdblock}
-                onChange={(e) => setIncludeYoutubeAdblock(e.target.checked)}
-                className="mt-1 rounded border-slate-300 text-amber-600 focus:ring-amber-600"
-              />
-              <span>Giữ rule chặn quảng cáo YouTube trong Locket.conf</span>
-            </label>
-            <label className="flex items-start gap-2.5 text-sm text-slate-700 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={enableTrafficProbe}
-                onChange={(e) => setEnableTrafficProbe(e.target.checked)}
-                className="mt-1 rounded border-slate-300 text-amber-600 focus:ring-amber-600"
-              />
-              <span>
-                Bật dò URL Locket (Debug Probe) để ghi mọi request Filter/AI vào tab API &amp; Nhật ký
-              </span>
-            </label>
+            {hostMode === 'self-hosted' && (
+              <label className="flex items-start gap-2.5 text-sm text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={enableTrafficProbe}
+                  onChange={(e) => setEnableTrafficProbe(e.target.checked)}
+                  className="mt-1 rounded border-slate-300 text-amber-600 focus:ring-amber-600"
+                />
+                <span>
+                  Bật Debug Probe (ghi request vào tab API &amp; Nhật ký)
+                </span>
+              </label>
+            )}
           </div>
 
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3.5 space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold text-slate-900">Link nhập nhanh vào Shadowrocket</span>
-              <button
-                type="button"
-                onClick={() => copyText(directImportUrl, 'import-url')}
-                className="inline-flex items-center gap-1 text-xs font-medium text-amber-800 hover:text-amber-900 whitespace-nowrap"
-              >
-                {copiedId === 'import-url' ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-600" aria-hidden="true" />
-                    <span>Đã chép</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" aria-hidden="true" />
-                    <span>Chép URL</span>
-                  </>
-                )}
-              </button>
+          {hostMode === 'self-hosted' && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3.5 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-slate-900">Link nhập vào Shadowrocket</span>
+                <button
+                  type="button"
+                  onClick={() => copyText(directImportUrl, 'import-url')}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-amber-800 hover:text-amber-900 whitespace-nowrap"
+                >
+                  {copiedId === 'import-url' ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600" aria-hidden="true" />
+                      <span>Đã chép</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" aria-hidden="true" />
+                      <span>Chép URL</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              <p className="font-mono text-[11px] text-slate-600 break-all">{directImportUrl}</p>
             </div>
-            <p className="font-mono text-[11px] text-slate-600 break-all">{directImportUrl}</p>
-          </div>
+          )}
         </div>
 
         {/* Code Output Panel */}
-        <div className="xl:col-span-7 bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <div className="xl:col-span-7 min-w-0 bg-white border border-slate-200 rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50/70">
-            <div className="flex items-center gap-1 p-1 bg-slate-200/70 rounded-lg">
+            <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-200/70 rounded-lg">
               <button
                 type="button"
                 onClick={() => setCodeTab('conf')}
@@ -288,7 +385,7 @@ export function MitmConfigView({
                   codeTab === 'conf' ? 'bg-white text-slate-900 shadow-sm' : 'bg-transparent text-slate-600'
                 }`}
               >
-                Locket_AI_Free.conf
+                {directNoServer ? 'Locket_Direct_GitRaw.conf' : 'Locket_AI_Free.conf'}
               </button>
               <button
                 type="button"
@@ -297,16 +394,23 @@ export function MitmConfigView({
                   codeTab === 'script' ? 'bg-white text-slate-900 shadow-sm' : 'bg-transparent text-slate-600'
                 }`}
               >
-                locket_ai_redirect.js
+                {activeScriptTabLabel}
+              </button>
+              <button
+                type="button"
+                onClick={() => setCodeTab('unlock')}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
+                  codeTab === 'unlock' ? 'bg-white text-slate-900 shadow-sm' : 'bg-transparent text-slate-600'
+                }`}
+              >
+                locket_filter_unlock.js
               </button>
             </div>
 
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() =>
-                  copyText(codeTab === 'conf' ? generatedConf : generatedScript, 'code-body')
-                }
+                onClick={() => copyText(activeCodeBody, 'code-body')}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap"
               >
                 {copiedId === 'code-body' ? (
@@ -323,12 +427,7 @@ export function MitmConfigView({
               </button>
               <button
                 type="button"
-                onClick={() =>
-                  downloadFile(
-                    codeTab === 'conf' ? generatedConf : generatedScript,
-                    codeTab === 'conf' ? 'Locket_AI_Free.conf' : 'locket_ai_redirect.js'
-                  )
-                }
+                onClick={() => downloadFile(activeCodeBody, activeCodeFilename)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 text-xs font-semibold text-white hover:bg-slate-800 whitespace-nowrap"
               >
                 <Download className="w-3.5 h-3.5" aria-hidden="true" />
@@ -337,41 +436,38 @@ export function MitmConfigView({
             </div>
           </div>
 
-          <pre className="p-4 sm:p-5 text-xs font-mono text-slate-800 overflow-x-auto max-h-[420px] leading-relaxed bg-white">
-            <code>{codeTab === 'conf' ? generatedConf : generatedScript}</code>
+          <pre className="p-4 sm:p-5 text-xs font-mono text-slate-800 overflow-x-auto max-h-[440px] leading-relaxed bg-white">
+            <code>{activeCodeBody}</code>
           </pre>
         </div>
       </div>
 
-      {/* Step-by-step Shadowrocket Guide */}
+      {/* Step-by-step Shadowrocket In-App Locket Guide */}
       <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 space-y-3">
         <div className="flex items-center gap-2">
           <ShieldAlert className="w-4 h-4 text-amber-700" aria-hidden="true" />
           <h2 className="font-display text-sm font-semibold text-slate-900">
-            Hướng dẫn dùng thẳng Filter trong app Locket trên iPhone (Shadowrocket)
+            Hướng dẫn dùng trực tiếp Filter AI trên Locket bằng Conf Raw GitHub
           </h2>
         </div>
         <ol className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs text-slate-600 leading-relaxed pt-1">
           <li className="space-y-1">
-            <span className="font-semibold text-slate-900 block">Bước 1 · Nhập cấu hình</span>
-            Mở Shadowrocket → tab <strong>Cấu hình (Config)</strong> → bấm dấu <strong>+</strong> → dán link{' '}
-            <code className="font-mono text-slate-800">Locket.conf</code> ở trên rồi chọn{' '}
-            <strong>Use Config</strong>.
+            <span className="font-semibold text-slate-900 block">Bước 1 · Đẩy lên GitHub</span>
+            Tải ZIP ở tab <strong>Git Raw / Worker / Render</strong> rồi đẩy thư mục{' '}
+            <code className="font-mono text-slate-800">github-raw/</code> lên repo GitHub của bạn (chứa sẵn cả <code className="font-mono">Locket_Direct_GitRaw.conf</code> &amp; scripts).
+          </li>
+          <li className="space-y-1 min-w-0">
+            <span className="font-semibold text-slate-900 block">Bước 2 · Nhập Link Raw Git</span>
+            Mở Shadowrocket → <strong>Config</strong> → bấm <strong>+</strong> → dán link{' '}
+            <code className="font-mono text-slate-800 break-all">raw.githubusercontent.com/.../Locket_Direct_GitRaw.conf</code> → chọn <strong>Use Config</strong>.
           </li>
           <li className="space-y-1">
-            <span className="font-semibold text-slate-900 block">Bước 2 · Bật HTTPS MITM</span>
-            Chạm vào file cấu hình → <strong>Sửa cấu hình → HTTPS Decryption</strong> → bật lên và chọn{' '}
-            <strong>Generate New CA Certificate</strong>.
+            <span className="font-semibold text-slate-900 block">Bước 3 · Bật HTTPS Decryption</span>
+            Vào config vừa thêm → <strong>HTTPS Decryption</strong> → bật ON → Generate New CA Certificate → Cài đặt iPhone <em>Trust Certificate</em>.
           </li>
           <li className="space-y-1">
-            <span className="font-semibold text-slate-900 block">Bước 3 · Tin cậy chứng chỉ</span>
-            Vào <strong>Cài đặt iOS → Đã tải về hồ sơ</strong> để cài đặt CA, sau đó vào{' '}
-            <strong>Giới thiệu → Cài đặt tin cậy chứng nhận</strong> và gạt bật chứng chỉ Shadowrocket.
-          </li>
-          <li className="space-y-1">
-            <span className="font-semibold text-slate-900 block">Bước 4 · Chọn Filter trong Locket</span>
-            Bật VPN trên Shadowrocket rồi mở bảng <strong>Filter</strong> trong camera Locket. Mở tab{' '}
-            <strong>API &amp; Nhật ký</strong> để kiểm tra <code className="font-mono">original_url</code> và điều chỉnh Regex nếu Locket đổi tên Cloud Function.
+            <span className="font-semibold text-slate-900 block">Bước 4 · Mở Locket &amp; Chụp Filter</span>
+            Bật VPN Shadowrocket → tắt hoàn toàn app Locket mở lại → chọn Filter bất kỳ (Flower Crown, Cutesy, Photobooth...) và chụp trực tiếp trên app.
           </li>
         </ol>
       </section>

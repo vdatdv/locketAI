@@ -137,7 +137,7 @@ export function ApiLogsView() {
     const started = performance.now();
     try {
       const sampleImage = createSamplePortraitBase64();
-      const res = await fetch('/api/locket/ai-generate', {
+      const res = await fetch('/generateFilteredImage', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -150,7 +150,7 @@ export function ApiLogsView() {
             aspect_ratio: '1:1',
             image_base64: sampleImage,
           },
-          original_url: 'https://us-central1-locket-4252a.cloudfunctions.net/applyFilter',
+          original_url: 'https://api.locketcamera.com/generateFilteredImage',
           callable: true,
         }),
       });
@@ -172,7 +172,7 @@ export function ApiLogsView() {
           : undefined,
       };
       setTestResult({
-        endpoint: 'POST /api/locket/ai-generate (Locket Filter Img2Img)',
+        endpoint: 'POST /generateFilteredImage (App Locket Img2Img)',
         status: res.status,
         latencyMs: Math.round(performance.now() - started),
         body: JSON.stringify(preview, null, 2),
@@ -180,7 +180,7 @@ export function ApiLogsView() {
       await fetchLogs();
     } catch (err) {
       setTestResult({
-        endpoint: 'POST /api/locket/ai-generate (Locket Filter Img2Img)',
+        endpoint: 'POST /generateFilteredImage (App Locket Img2Img)',
         status: 500,
         latencyMs: Math.round(performance.now() - started),
         body: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : 'Error' }, null, 2),
