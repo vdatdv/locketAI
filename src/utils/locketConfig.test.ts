@@ -45,6 +45,10 @@ test('DEFAULT_SHADOWROCKET_AI_PATTERN matches filter/AI endpoints without interc
     true
   );
   assert.equal(
+    regex.test('https://applyfilter-abc123-uc.a.run.app/generateMagic'),
+    true
+  );
+  assert.equal(
     regex.test('https://api.locketcamera.com/v1/ai/generate'),
     true
   );
@@ -70,11 +74,12 @@ test('generateMitmRedirectScript forwards filter_id and image_base64 for Shadowr
   assert.ok(srScript.includes('rawBody.data'));
 });
 
-test('generateMergedLocketConf includes Gold scripts, patched forceGold4.3 option, and AI filter rule', () => {
+test('generateMergedLocketConf includes Gold scripts, patched forceGold4.3 option, probe option, and AI filter rule', () => {
   const conf = generateMergedLocketConf('https://free-ai.onrender.com', 'shadowrocket', {
     includeYoutubeAdblock: true,
     includeGoldUnlock: true,
     usePatchedForceGold: true,
+    enableTrafficProbe: true,
     aiScriptUrl: '',
     aiPattern: DEFAULT_SHADOWROCKET_AI_PATTERN,
   });
@@ -82,7 +87,8 @@ test('generateMergedLocketConf includes Gold scripts, patched forceGold4.3 optio
   assert.ok(conf.includes('header7.js'));
   assert.ok(conf.includes('https://free-ai.onrender.com/scripts/forceGold4.3.js'));
   assert.ok(conf.includes('locket_ai_free = type=http-request'));
-  assert.ok(conf.includes('api.locketcamera.com'));
+  assert.ok(conf.includes('locket_probe = type=http-request'));
+  assert.ok(conf.includes('*-uc.a.run.app'));
   assert.ok(conf.includes('us-central1-locket-4252a.cloudfunctions.net'));
 });
 

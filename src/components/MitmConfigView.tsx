@@ -31,6 +31,7 @@ export function MitmConfigView({
 }: MitmConfigViewProps) {
   const [includeGoldUnlock, setIncludeGoldUnlock] = useState(true);
   const [usePatchedForceGold, setUsePatchedForceGold] = useState(true);
+  const [enableTrafficProbe, setEnableTrafficProbe] = useState(false);
   const [includeYoutubeAdblock, setIncludeYoutubeAdblock] = useState(true);
   const [aiPattern, setAiPattern] = useState(DEFAULT_SHADOWROCKET_AI_PATTERN);
   const [codeTab, setCodeTab] = useState<'conf' | 'script'>('conf');
@@ -44,11 +45,20 @@ export function MitmConfigView({
       generateMergedLocketConf(cleanUrl, client, {
         includeGoldUnlock,
         usePatchedForceGold,
+        enableTrafficProbe,
         includeYoutubeAdblock,
         aiScriptUrl: '',
         aiPattern,
       }),
-    [cleanUrl, client, includeGoldUnlock, usePatchedForceGold, includeYoutubeAdblock, aiPattern]
+    [
+      cleanUrl,
+      client,
+      includeGoldUnlock,
+      usePatchedForceGold,
+      enableTrafficProbe,
+      includeYoutubeAdblock,
+      aiPattern,
+    ]
   );
 
   const generatedScript = useMemo(
@@ -58,7 +68,7 @@ export function MitmConfigView({
 
   const directImportUrl = `${cleanUrl || 'https://your-server.onrender.com'}/Locket.conf?client=${client}${
     usePatchedForceGold ? '' : '&patchedForceGold=0'
-  }`;
+  }${enableTrafficProbe ? '&probe=1' : ''}`;
 
   async function copyText(text: string, id: string) {
     try {
@@ -228,6 +238,17 @@ export function MitmConfigView({
                 className="mt-1 rounded border-slate-300 text-amber-600 focus:ring-amber-600"
               />
               <span>Giữ rule chặn quảng cáo YouTube trong Locket.conf</span>
+            </label>
+            <label className="flex items-start gap-2.5 text-sm text-slate-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={enableTrafficProbe}
+                onChange={(e) => setEnableTrafficProbe(e.target.checked)}
+                className="mt-1 rounded border-slate-300 text-amber-600 focus:ring-amber-600"
+              />
+              <span>
+                Bật dò URL Locket (Debug Probe) để ghi mọi request Filter/AI vào tab API &amp; Nhật ký
+              </span>
             </label>
           </div>
 

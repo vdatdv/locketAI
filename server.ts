@@ -7,6 +7,7 @@ import {
   buildEnhancedPrompt,
   generateMergedLocketConf,
   generateMitmRedirectScript,
+  generateTrafficProbeScript,
   getDimensionsForAspectRatio,
   type AspectRatioOption,
   type FreeAiModel,
@@ -530,11 +531,28 @@ async function startServer() {
     let scriptBody = fs.readFileSync(sourcePath, 'utf-8');
     const aiFilterPatch = `
 if (typeof obj === "object" && obj && obj.entries && ua.includes("Locket")) {
+    try {
+        var fg = JSON.parse(obj.entries.feature_gates || "{}");
+        fg.camera_filters = "enabled";
+        fg.ai_filters = "enabled";
+        fg.custom_filters = "enabled";
+        fg.filters = "enabled";
+        obj.entries.feature_gates = JSON.stringify(fg);
+    } catch (e) {}
+    try {
+        var uf = JSON.parse(obj.entries.upsell_features || "{}");
+        uf.camera_filters = true;
+        uf.ai_filters = true;
+        uf.custom_filters = true;
+        uf.filters = true;
+        obj.entries.upsell_features = JSON.stringify(uf);
+    } catch (e) {}
     Object.assign(obj.entries, {
         ai_filters_enabled: "true",
         custom_filters_enabled: "true",
         filter_generation_enabled: "true",
-        ai_camera_filters_enabled: "true"
+        ai_camera_filters_enabled: "true",
+        camera_filters_enabled: "true"
     });
 }
 $done({ body: JSON.stringify(obj) });`;
@@ -550,7 +568,7 @@ $done({ body: JSON.stringify(obj) });`;
       status: 200,
       latencyMs: Date.now() - startedAt,
       provider: 'script-host',
-      detail: 'Served patched forceGold4.3.js (AI Filters enabled)',
+      detail: 'Served patched forceGold4.3.js (AI Filters + Feature Gates enabled)',
     });
 
     res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
@@ -583,6 +601,43 @@ $done({ body: JSON.stringify(obj) });`;
     res.send(scriptBody);
   });
 
+  // Optional non-blocking Traffic Probe script to inspect actual Locket iOS URLs
+  app.get('/scripts/locket_traffic_probe.js', (req, res) => {
+    const startedAt = Date.now();
+    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    const host = req.headers.host || `localhost:${PORT}`;
+    const origin = `${proto}://${host}`;
+    const scriptBody = generateTrafficProbeScript(origin);
+
+    recordLog({
+      method: 'GET',
+      path: '/scripts/locket_traffic_probe.js',
+      status: 200,
+      latencyMs: Date.now() - startedAt,
+      provider: 'script-host',
+      detail: 'Served passive Traffic Probe script',
+    });
+
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.send(scriptBody);
+  });
+
+  app.post('/api/locket/mitm-probe', (req, res) => {
+    const body = (req.body || {}) as Record<string, unknown>;
+    const method = String(body.method || 'POST');
+    const url = String(body.url || '').slice(0, 140);
+    const keys = Array.isArray(body.keys) ? body.keys.join(', ') : '';
+    recordLog({
+      method,
+      path: '/api/locket/mitm-probe',
+      status: 200,
+      latencyMs: 1,
+      provider: 'traffic-probe',
+      detail: `${url}${keys ? ` · keys: [${keys}]` : ''}`,
+    });
+    res.json({ ok: true });
+  });
+
   // Live Shadowrocket / Loon / Surge Config hosted directly by this server
   app.get('/Locket.conf', (req, res) => {
     const startedAt = Date.now();
@@ -592,6 +647,7 @@ $done({ body: JSON.stringify(obj) });`;
         ? clientParam
         : 'shadowrocket';
     const usePatchedForceGold = req.query.patchedForceGold !== '0';
+    const enableTrafficProbe = req.query.probe === '1';
     const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
     const host = req.headers.host || `localhost:${PORT}`;
     const origin = `${proto}://${host}`;
@@ -599,6 +655,7 @@ $done({ body: JSON.stringify(obj) });`;
       includeYoutubeAdblock: true,
       includeGoldUnlock: true,
       usePatchedForceGold,
+      enableTrafficProbe,
       aiScriptUrl: '',
     });
 
@@ -608,7 +665,7 @@ $done({ body: JSON.stringify(obj) });`;
       status: 200,
       latencyMs: Date.now() - startedAt,
       provider: 'config-host',
-      detail: `Served merged Locket.conf (${client})`,
+      detail: `Served merged Locket.conf (${client}${enableTrafficProbe ? ' + probe' : ''})`,
     });
 
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -678,7 +735,7 @@ $done({ body: JSON.stringify(obj) });`;
     const readmeContent = `# Locket Free AI & Filter Server
 
 ## Deploy miễn phí trên Render.com (0đ)
-- Build Command: \`npm install --include=dev && npm run build\`
+- Build Command: \`npm install --include=dev --legacy-peer-deps && npm run build\`
 - Start Command: \`npx tsx server.ts\`
 - Environment Variable: \`NODE_ENV=production\`
 

@@ -15,7 +15,7 @@ const PLATFORMS: Array<{
     steps: [
       'Tạo repository GitHub mới và tải code lên (tải trọn bộ ZIP bên trên để có đủ cả web, Locket.conf và forceGold4.3.js).',
       'Vào render.com → New Web Service → chọn Free Tier ($0/month, Region Singapore).',
-      'Build Command: npm install --include=dev && npm run build · Start Command: npx tsx server.ts (Env: NODE_ENV=production).',
+      'Build Command: npm install --include=dev --legacy-peer-deps && npm run build · Start Command: npx tsx server.ts (Env: NODE_ENV=production).',
       'Sau khi deploy xong, copy link https://ten-app.onrender.com dán vào tab Shadowrocket MITM.',
     ],
   },

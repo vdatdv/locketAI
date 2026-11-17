@@ -26,9 +26,9 @@ export interface AiStylePreset {
   recommendedModel: FreeAiModel;
 }
 
-// Matches Locket AI & Filter endpoints while intentionally avoiding normal upload endpoints like postMomentV2
+// Matches Locket AI & Filter endpoints across Cloud Functions v1/v2 & Locket API while excluding normal postMoment uploads
 export const DEFAULT_SHADOWROCKET_AI_PATTERN =
-  '^https:\\/\\/(api\\.locketcamera\\.com|us-central1-locket-4252a\\.cloudfunctions\\.net)\\/.*(ai|filter|generate|remix|style|customFilter|applyFilter).*';
+  '^https:\\/\\/(.*locketcamera\\.com|.*cloudfunctions\\.net|.*-uc\\.a\\.run\\.app)\\/(?!.*(postMoment|getMoment|latestMoment|fetchUser|getUser|account|login|streak|reaction|chat|message|friend|telemetry|log)).*(ai|filter|generate|remix|style|customFilter|applyFilter|effect|magic|transform|edit|look|portrait|restyle|face|nano|gemini).*';
 
 export const LOCKET_FILTERS: LocketFilterPreset[] = [
   {
@@ -489,10 +489,54 @@ $httpClient.post(requestOptions, function (error, response, data) {
 `;
 }
 
+export function generateTrafficProbeScript(serverUrl: string): string {
+  const cleanUrl = normalizeServerUrl(serverUrl) || 'https://your-free-locket-ai.onrender.com';
+  return `// ============================================================
+// Locket Traffic Probe (Shadowrocket) — Dò URL & Payload thật của app Locket
+// Không chặn hay sửa request, chỉ gửi tên URL + key JSON về tab API & Nhật ký
+// ============================================================
+
+const PROBE_URL = "${cleanUrl}/api/locket/mitm-probe";
+const targetUrl = $request.url || "";
+const ua = $request.headers["User-Agent"] || $request.headers["user-agent"] || "";
+
+if (!ua.includes("Locket") && !targetUrl.includes("locket")) {
+  $done({});
+} else {
+  let keys = [];
+  try {
+    const parsed = $request.body ? JSON.parse($request.body) : {};
+    const inner = parsed && parsed.data ? parsed.data : parsed;
+    if (inner && typeof inner === "object") {
+      keys = Object.keys(inner).slice(0, 12);
+    }
+  } catch (e) {}
+
+  $httpClient.post(
+    {
+      url: PROBE_URL,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        method: $request.method || "POST",
+        url: targetUrl,
+        keys: keys,
+        bodyPreview: ($request.body || "").slice(0, 220)
+      }),
+      timeout: 2
+    },
+    function () {
+      $done({});
+    }
+  );
+}
+`;
+}
+
 export interface ConfMergeOptions {
   includeYoutubeAdblock: boolean;
   includeGoldUnlock: boolean;
   usePatchedForceGold?: boolean;
+  enableTrafficProbe?: boolean;
   aiScriptUrl: string;
   aiPattern?: string;
 }
@@ -504,6 +548,7 @@ export function generateMergedLocketConf(
     includeYoutubeAdblock: true,
     includeGoldUnlock: true,
     usePatchedForceGold: true,
+    enableTrafficProbe: false,
     aiScriptUrl: '',
     aiPattern: DEFAULT_SHADOWROCKET_AI_PATTERN,
   }
@@ -532,7 +577,7 @@ export function generateMergedLocketConf(
 ${rewriteLines.join('\n')}
 
 [mitm]
-hostname = api.revenuecat.com, firebaseremoteconfig.googleapis.com, api.locketcamera.com, us-central1-locket-4252a.cloudfunctions.net
+hostname = api.revenuecat.com, firebaseremoteconfig.googleapis.com, api.locketcamera.com, *.locketcamera.com, us-central1-locket-4252a.cloudfunctions.net, *.cloudfunctions.net, *-uc.a.run.app
 `;
   }
 
@@ -571,12 +616,20 @@ FINAL,DIRECT
   scriptLines.push(
     `locket_ai_free = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`
   );
+  if (options.enableTrafficProbe) {
+    scriptLines.push(
+      `locket_probe = type=http-request, pattern=^https:\\/\\/.*(locketcamera\\.com|cloudfunctions\\.net|uc\\.a\\.run\\.app)\\/.*, script-path=${cleanServer}/scripts/locket_traffic_probe.js, requires-body=true, max-size=1048576, timeout=5`
+    );
+  }
 
   const mitmHosts = [
     'api.revenuecat.com',
     'firebaseremoteconfig.googleapis.com',
     'api.locketcamera.com',
+    '*.locketcamera.com',
     'us-central1-locket-4252a.cloudfunctions.net',
+    '*.cloudfunctions.net',
+    '*-uc.a.run.app',
   ];
   if (options.includeYoutubeAdblock) {
     mitmHosts.push(
