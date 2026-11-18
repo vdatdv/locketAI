@@ -36,7 +36,7 @@ const HOST_MODES: Array<{ id: HostMode; label: string; hint: string }> = [
   {
     id: 'git-direct',
     label: '100% GitHub Raw (0 Server)',
-    hint: 'Toàn bộ .conf & script để trên Git Raw — không cần Render hay web ngoài. Script locket_ai_direct.js gọi thẳng AI Horde Img2Img & Pollinations.',
+    hint: 'Toàn bộ .conf & script để trên Git Raw — không cần Render hay web ngoài. Script locket_ai_direct.js gọi thẳng AI Horde Img2Img / Txt2Img R2 ngay trong Shadowrocket.',
   },
   {
     id: 'git-backend',
@@ -185,7 +185,7 @@ export function MitmConfigView({
             <p className="text-xs text-slate-600 leading-relaxed">
               {directNoServer ? (
                 <>
-                  <code className="font-mono">locket_ai_direct.js</code> gọi thẳng AI Horde Img2Img &amp; Pollinations ngay trong Shadowrocket — <strong>không cần server hay web</strong>.
+                  <code className="font-mono">locket_ai_direct.js</code> gọi thẳng AI Horde Img2Img / Txt2Img R2 ngay trong Shadowrocket — <strong>không cần server hay web</strong>.
                 </>
               ) : (
                 <>

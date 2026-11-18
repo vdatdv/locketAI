@@ -26,12 +26,12 @@ export interface AiStylePreset {
   recommendedModel: FreeAiModel;
 }
 
-// Matches Locket in-app AI Filter & Photobooth endpoints (including generateFilteredImage) while excluding read/config/analytics/moment endpoints (such as getFilters)
+// Matches Locket in-app AI Filter & Photobooth endpoints (API + Cloud Functions + Cloud Run v2 hostnames) while excluding read/config/analytics/moment endpoints
 export const DEFAULT_SHADOWROCKET_AI_PATTERN =
-  '^https:\\/\\/(api\\.locketcamera\\.com|.*cloudfunctions\\.net|.*-uc\\.a\\.run\\.app)\\/(?!.*(getFilters|get[A-Z]|fetch[A-Z]|list[A-Z]|set[A-Z]|update[A-Z]|delete[A-Z]|postMoment|rollcall|account|login|streak|reaction|chat|message|friend|telemetry|analytics|log)).*([Gg]enerate[Ff]iltered[Ii]mage|[Cc]reate[Ff]iltered[Ii]mage|[Aa]pply[Ff]ilter|[Gg]enerate[Ff]ilter|[Cc]reate[Ff]ilter|[Cc]ustom[Ff]ilter|[Pp]rocess[Ff]ilter|[Rr]ender[Ff]ilter|[Cc]amera[Ff]ilter|[Mm]agic[Ff]ilter|[Aa][Ii][Ff]ilter|[Ff]ilter[Aa][Ii]|[Gg]enerate[Aa][Ii]|[Gg]enerate[Mm]agic|[Gg]enerate[Pp]hotobooth|[Pp]hotobooth|[Gg]enerate[Ii]mage|[Gg]enerate[Pp]hoto|[Aa][Ii][Gg]enerate|filters?\\/(apply|generate|create|process|render)|ai\\/(generate|image|filter|remix|transform)|[Tt]ransform[Ii]mage|[Rr]estyle|[Pp]hoto[Ee]ffect|[Aa]pply[Ee]ffect).*';
+  '^https:\\/\\/(?!.*(getFilters|get[A-Z]|fetch[A-Z]|list[A-Z]|set[A-Z]|update[A-Z]|delete[A-Z]|postMoment|rollcall|account|login|streak|reaction|chat|message|friend|telemetry|analytics|log))((api\\.locketcamera\\.com|[^/]*cloudfunctions\\.net)\\/.*([Gg]enerate[Ff]iltered[Ii]mage|[Cc]reate[Ff]iltered[Ii]mage|[Aa]pply[Ff]ilter|[Gg]enerate[Ff]ilter|[Cc]reate[Ff]ilter|[Cc]ustom[Ff]ilter|[Pp]rocess[Ff]ilter|[Rr]ender[Ff]ilter|[Cc]amera[Ff]ilter|[Mm]agic[Ff]ilter|[Aa][Ii][Ff]ilter|[Ff]ilter[Aa][Ii]|[Gg]enerate[Aa][Ii]|[Gg]enerate[Mm]agic|[Gg]enerate[Pp]hotobooth|[Pp]hotobooth|[Gg]enerate[Ii]mage|[Gg]enerate[Pp]hoto|[Aa][Ii][Gg]enerate|filters?\\/(apply|generate|create|process|render)|ai\\/(generate|image|filter|remix|transform)|[Tt]ransform[Ii]mage|[Rr]estyle|[Pp]hoto[Ee]ffect|[Aa]pply[Ee]ffect).*|[^/]*([Gg]enerate[Ff]iltered[Ii]mage|[Cc]reate[Ff]iltered[Ii]mage|[Aa]pply[Ff]ilter|[Gg]enerate[Ff]ilter|[Cc]reate[Ff]ilter|[Gg]enerate[Pp]hotobooth|[Pp]hotobooth|[Gg]enerate[Aa][Ii])[^/]*\\.a\\.run\\.app(\\/.*)?)';
 
 export const LOCKET_FILTER_UNLOCK_PATTERN =
-  '^https:\\/\\/api\\.locketcamera\\.com\\/(?!.*([Gg]enerate[Ff]iltered[Ii]mage|[Cc]reate[Ff]iltered[Ii]mage|[Gg]enerate[Ff]ilter|[Aa]pply[Ff]ilter)).*';
+  '^https:\\/\\/api\\.locketcamera\\.com\\/(?!.*([Gg]enerate[Ff]iltered[Ii]mage|[Cc]reate[Ff]iltered[Ii]mage|[Gg]enerate[Ff]ilter|[Aa]pply[Ff]ilter|[Cc]reate[Ff]ilter|[Cc]ustom[Ff]ilter|[Pp]rocess[Ff]ilter|[Rr]ender[Ff]ilter|[Gg]enerate[Pp]hotobooth|[Pp]hotobooth|[Gg]enerate[Aa][Ii]|[Gg]enerate[Mm]agic)).*';
 
 export const LOCKET_FILTERS: LocketFilterPreset[] = [
   {
@@ -785,13 +785,15 @@ export function generateFilterUnlockScript(): string {
     }
 
     const headers = Object.assign({}, ($request && $request.headers) || {});
+    let changed = false;
     for (const k of Object.keys(headers)) {
       const low = k.toLowerCase();
       if (low === "if-none-match" || low === "if-modified-since" || low === "x-revenuecat-etag") {
         delete headers[k];
+        changed = true;
       }
     }
-    $done({ headers: headers });
+    $done(changed ? { headers: headers } : {});
     return;
   }
 
@@ -800,116 +802,134 @@ export function generateFilterUnlockScript(): string {
     return;
   }
 
-  let body = ($response && $response.body) || "";
-  let status = ($response && ($response.status || $response.statusCode)) || 200;
+  const body = ($response && $response.body) || "";
+  const origStatus = ($response && ($response.status || $response.statusCode)) || 200;
 
-  if (body && typeof body === "string") {
-    try {
-      let obj = JSON.parse(body);
-      const isFriendsOrFeed = /getFriends|getUsers|fetchFriends|getRecipients|recipients|moments|fetchMoments|getMoments|contacts|postMoment|getGroupMessages/i.test(reqUrl);
-
-      if (!isFriendsOrFeed && (status === 400 || status === 401 || status === 403)) {
-        status = 200;
-      }
-
-      const applyGoldAndFilterAccess = (target) => {
-        if (!target || typeof target !== "object" || Array.isArray(target)) return;
-        target.badge = "locket_gold";
-        target.badge_tier = "gold";
-        target.show_badge = true;
-        target.is_gold = true;
-        target.has_gold = true;
-        target.gold = true;
-        target.gold_subscription = true;
-        target.has_gold_subscription = true;
-        target.tier = "gold";
-        target.subscription_status = "active";
-        target.can_use_filters = true;
-        target.can_use_gold_features = true;
-        target.can_generate_filtered_image = true;
-        target.can_create_filtered_image = true;
-        target.has_ai_access = true;
-        target.filter_access = true;
-      };
-
-      const isSingleUserEndpoint = !isFriendsOrFeed && /getUser|fetchUser|getAccount|accountInfo|userProfile|getSubscription|subscription|clientData/i.test(reqUrl);
-      const isSingleUserObject = Boolean(
-        !isFriendsOrFeed &&
-        obj && (
-          isSingleUserEndpoint ||
-          (obj.data && typeof obj.data === "object" && !Array.isArray(obj.data) && obj.data.email) ||
-          (obj.result && typeof obj.result === "object" && !Array.isArray(obj.result) && obj.result.email) ||
-          (obj.user && typeof obj.user === "object" && !Array.isArray(obj.user) && obj.user.email)
-        )
-      );
-
-      if (isSingleUserObject) {
-        applyGoldAndFilterAccess(obj);
-        if (obj.data && typeof obj.data === "object") applyGoldAndFilterAccess(obj.data);
-        if (obj.result && typeof obj.result === "object") applyGoldAndFilterAccess(obj.result);
-        if (obj.user && typeof obj.user === "object") applyGoldAndFilterAccess(obj.user);
-      }
-
-      const falseKeys = [
-        "is_locked", "locked", "requires_gold", "require_gold", "gold_only",
-        "is_gold_only", "paywall", "show_paywall", "show_upsell", "upsell",
-        "blurred", "is_blurred", "needs_gold"
-      ];
-      const trueKeys = [
-        "can_view", "unlocked", "is_unlocked", "is_free", "free",
-        "can_use_filter", "allowed", "can_use_filters",
-        "can_generate_filtered_image", "can_create_filtered_image",
-        "has_ai_access", "filter_access"
-      ];
-
-      const transformNode = (node) => {
-        if (!node || typeof node !== "object") return;
-        if (Array.isArray(node)) {
-          for (let i = 0; i < node.length; i++) transformNode(node[i]);
-          return;
-        }
-        const isSelfNode = Boolean(
-          ("email" in node && typeof node.email === "string" && node.email.includes("@")) ||
-          ("push_token" in node && node.push_token) ||
-          ("fcm_token" in node && node.fcm_token)
-        );
-        if (isSelfNode) {
-          applyGoldAndFilterAccess(node);
-        }
-        for (const k of falseKeys) {
-          if (k in node) node[k] = false;
-        }
-        for (const k of trueKeys) {
-          if (k in node) node[k] = true;
-        }
-        const clearUrl = node.unblurred_url || node.unlocked_url || node.result_url || node.image_url || node.transformed_image_url || node.url;
-        if (typeof clearUrl === "string" && clearUrl.startsWith("http")) {
-          if ("blurred_url" in node) node.blurred_url = clearUrl;
-          if ("blurred_image_url" in node) node.blurred_image_url = clearUrl;
-          if ("preview_url" in node && node.is_blurred) node.preview_url = clearUrl;
-        }
-        for (const key of Object.keys(node)) {
-          if (node[key] && typeof node[key] === "object") {
-            transformNode(node[key]);
-          }
-        }
-      };
-
-      transformNode(obj);
-      body = JSON.stringify(obj);
-    } catch (e) {}
+  if (!body || typeof body !== "string") {
+    $done({});
+    return;
   }
 
-  const respHeaders = Object.assign({}, ($response && $response.headers) || {});
-  delete respHeaders["Content-Encoding"];
-  delete respHeaders["content-encoding"];
-  delete respHeaders["Content-Length"];
-  delete respHeaders["content-length"];
-  delete respHeaders["Transfer-Encoding"];
-  delete respHeaders["transfer-encoding"];
-  respHeaders["content-type"] = "application/json; charset=utf-8";
+  let obj = null;
+  try {
+    obj = JSON.parse(body);
+  } catch (e) {
+    $done({});
+    return;
+  }
 
-  $done({ status: status, headers: respHeaders, body: body });
+  if (!obj || typeof obj !== "object") {
+    $done({});
+    return;
+  }
+
+  const isFriendsOrFeed = /getFriends|getUsers|fetchFriends|getRecipients|recipients|moments|fetchMoments|getMoments|contacts|postMoment|getGroupMessages/i.test(reqUrl);
+  const upgradedStatus = !isFriendsOrFeed && (origStatus === 400 || origStatus === 401 || origStatus === 403);
+
+  const applyGoldAndFilterAccess = (target) => {
+    if (!target || typeof target !== "object" || Array.isArray(target)) return;
+    target.badge = "locket_gold";
+    target.badge_tier = "gold";
+    target.show_badge = true;
+    target.is_gold = true;
+    target.has_gold = true;
+    target.gold = true;
+    target.gold_subscription = true;
+    target.has_gold_subscription = true;
+    target.tier = "gold";
+    target.subscription_status = "active";
+    target.can_use_filters = true;
+    target.can_use_gold_features = true;
+    target.can_generate_filtered_image = true;
+    target.can_create_filtered_image = true;
+    target.can_use_photobooth = true;
+    target.photobooth_access = true;
+    target.unlimited_filters = true;
+    target.has_ai_access = true;
+    target.filter_access = true;
+    target.remaining_filters = 999;
+    target.filter_credits = 999;
+    target.filters_remaining = 999;
+    target.daily_filter_limit = 999;
+  };
+
+  const isSingleUserEndpoint = !isFriendsOrFeed && /getUser|fetchUser|getAccount|accountInfo|userProfile|getSubscription|subscription|clientData/i.test(reqUrl);
+  const isSingleUserObject = Boolean(
+    !isFriendsOrFeed &&
+    (
+      isSingleUserEndpoint ||
+      (obj.data && typeof obj.data === "object" && !Array.isArray(obj.data) && obj.data.email) ||
+      (obj.result && typeof obj.result === "object" && !Array.isArray(obj.result) && obj.result.email) ||
+      (obj.user && typeof obj.user === "object" && !Array.isArray(obj.user) && obj.user.email)
+    )
+  );
+
+  if (isSingleUserObject) {
+    applyGoldAndFilterAccess(obj);
+    if (obj.data && typeof obj.data === "object") applyGoldAndFilterAccess(obj.data);
+    if (obj.result && typeof obj.result === "object") applyGoldAndFilterAccess(obj.result);
+    if (obj.user && typeof obj.user === "object") applyGoldAndFilterAccess(obj.user);
+  }
+
+  const falseKeys = [
+    "is_locked", "locked", "requires_gold", "require_gold", "gold_only",
+    "is_gold_only", "paywall", "show_paywall", "show_upsell", "upsell",
+    "blurred", "is_blurred", "needs_gold"
+  ];
+  const trueKeys = [
+    "can_view", "unlocked", "is_unlocked", "is_free", "free",
+    "can_use_filter", "allowed", "can_use_filters",
+    "can_generate_filtered_image", "can_create_filtered_image",
+    "can_use_photobooth", "photobooth_access", "unlimited_filters",
+    "has_ai_access", "filter_access"
+  ];
+
+  const transformNode = (node) => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (let i = 0; i < node.length; i++) transformNode(node[i]);
+      return;
+    }
+    const isSelfNode = Boolean(
+      ("email" in node && typeof node.email === "string" && node.email.includes("@")) ||
+      ("push_token" in node && node.push_token) ||
+      ("fcm_token" in node && node.fcm_token)
+    );
+    if (isSelfNode) {
+      applyGoldAndFilterAccess(node);
+    }
+    for (const k of falseKeys) {
+      if (k in node) node[k] = false;
+    }
+    for (const k of trueKeys) {
+      if (k in node) node[k] = true;
+    }
+    const clearUrl = node.unblurred_url || node.unlocked_url || node.result_url || node.image_url || node.transformed_image_url || node.url;
+    if (typeof clearUrl === "string" && clearUrl.startsWith("http")) {
+      if ("blurred_url" in node) node.blurred_url = clearUrl;
+      if ("blurred_image_url" in node) node.blurred_image_url = clearUrl;
+      if ("preview_url" in node && node.is_blurred) node.preview_url = clearUrl;
+    }
+    for (const key of Object.keys(node)) {
+      if (node[key] && typeof node[key] === "object") {
+        transformNode(node[key]);
+      }
+    }
+  };
+
+  transformNode(obj);
+  const finalBody = JSON.stringify(obj);
+
+  if (upgradedStatus) {
+    $done({
+      status: 200,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: finalBody
+    });
+    return;
+  }
+
+  $done({ body: finalBody });
 })();
 `;
 }
@@ -983,61 +1003,91 @@ if (typeof $response !== "undefined") {
 
   return `// ============================================================
 // Locket In-App AI & Filter Redirect (${client.toUpperCase()})
-// Chuyển hướng trực tiếp POST /generateFilteredImage từ app Locket
-// về máy chủ AI 0đ của bạn (giữ nguyên toàn bộ body ảnh selfie + filter)
+// Dùng $httpClient.post gọi thẳng ${serverHost}/generateFilteredImage
+// rồi trả response 200 JSON về Locket (tương thích 100% Shadowrocket/Loon/Surge)
 // ============================================================
 
 const TARGET_ENDPOINT = "${cleanUrl}/generateFilteredImage";
 const TARGET_HOST = "${serverHost}";
 
-if (typeof $response === "undefined") {
+(function () {
+  if (typeof $response !== "undefined") {
+    $done({});
+    return;
+  }
   try {
-    if (typeof $request === "undefined" || !$request) {
+    if (typeof $request === "undefined" || !$request || typeof $httpClient === "undefined") {
       $done({});
-    } else {
-      const origUrl = String($request.url || "");
-      let nextUrl = TARGET_ENDPOINT;
-      if (origUrl.includes("?")) {
-        const q = origUrl.split("?")[1];
-        if (q) nextUrl += "?" + q;
+      return;
+    }
+    const origUrl = String($request.url || "");
+    let nextUrl = TARGET_ENDPOINT;
+    if (origUrl.includes("?")) {
+      const q = origUrl.split("?")[1];
+      if (q) nextUrl += "?" + q;
+    }
+    const fwdHeaders = {};
+    const origHeaders = $request.headers || {};
+    for (const k of Object.keys(origHeaders)) {
+      const low = k.toLowerCase();
+      if (low === "host" || low === "content-length" || low.startsWith(":")) continue;
+      fwdHeaders[k] = origHeaders[k];
+    }
+    fwdHeaders["Host"] = TARGET_HOST;
+    fwdHeaders["Content-Type"] = "application/json";
+    fwdHeaders["X-Locket-Proxy"] = "${client}";
+
+    let rawBody = $request.body || "{}";
+    try {
+      const parsed = JSON.parse(rawBody);
+      if (parsed && typeof parsed === "object" && !parsed.original_url) {
+        parsed.original_url = origUrl;
+        rawBody = JSON.stringify(parsed);
       }
-      const headers = Object.assign({}, $request.headers || {});
-      headers["Host"] = TARGET_HOST;
-      headers["host"] = TARGET_HOST;
-      headers["X-Locket-Proxy"] = "${client}";
-      $done({ url: nextUrl, headers: headers });
-    }
-  } catch (e) {
-    $done({});
-  }
-} else {
-  try {
-    let obj = {};
-    if ($response.body) {
-      try {
-        obj = JSON.parse($response.body);
-      } catch (e) {
-        obj = {};
-      }
-    }
-    delete obj.error;
-    delete obj.errors;
-    if (obj.result && typeof obj.result === "object") {
-      delete obj.result.error;
-      delete obj.result.errors;
-    }
-    $done({
-      status: 200,
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-        "Access-Control-Allow-Origin": "*"
+    } catch (e) {}
+
+    $httpClient.post(
+      {
+        url: nextUrl,
+        headers: fwdHeaders,
+        body: rawBody,
+        timeout: 55
       },
-      body: JSON.stringify(obj)
-    });
+      function (err, resp, data) {
+        if (err || !data) {
+          $done({});
+          return;
+        }
+        let cleanBody = String(data);
+        try {
+          const obj = JSON.parse(cleanBody);
+          if (obj && typeof obj === "object") {
+            delete obj.error;
+            delete obj.errors;
+            if (obj.result && typeof obj.result === "object") {
+              delete obj.result.error;
+              delete obj.result.errors;
+            }
+            cleanBody = JSON.stringify(obj);
+          }
+        } catch (e) {}
+
+        $done({
+          response: {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json; charset=utf-8",
+              "Access-Control-Allow-Origin": "*"
+            },
+            body: cleanBody
+          }
+        });
+      }
+    );
   } catch (e) {
     $done({});
   }
-}
+})();
 `;
 }
 
@@ -1045,7 +1095,7 @@ export function generateDirectFilterScript(): string {
   return `// ============================================================
 // Locket In-App AI Filter Direct (100% GitHub Raw · 0 Server)
 // Chạy trực tiếp trên Shadowrocket/Loon/Surge khi bấm Filter trong Locket
-// Hỗ trợ Img2Img (AI Horde R2 HTTPS) + Fallback Pollinations Flux
+// Dùng AI Horde R2 HTTPS (hỗ trợ cả Img2Img selfie + Txt2Img khi thiếu base64)
 // ============================================================
 
 (function () {
@@ -1066,6 +1116,7 @@ export function generateDirectFilterScript(): string {
     mohawk: "bold punk mohawk hairstyle transformation, dramatic studio lighting",
     braces: "cute smiling portrait with colorful sparkly orthodontic braces",
     beard: "full well-groomed realistic beard transformation, warm portrait lighting",
+    bowling_ball: "smooth shiny bald head transformation, humorous realistic studio portrait",
     bye_brows: "avant-garde bleached invisible eyebrows editorial fashion look",
     toothless: "hilarious goofy toothless smile comedy portrait effect",
     looks_maxxing: "sharp chiseled jawline dramatic black and white lighting",
@@ -1098,6 +1149,27 @@ export function generateDirectFilterScript(): string {
     pirate_hat: "wearing a classic pirate captain tricorne hat, adventure aesthetic",
     ocean_underwater: "underwater sunlight caustic ripples, dreamy aqua blue glow",
     fireworks: "bright colorful night fireworks bursting behind portrait"
+  };
+
+  const FILTER_ALIASES = {
+    disco: "disco_lights",
+    cash: "cash_money",
+    cowboy: "cowboy_cowgirl",
+    looksmaxing: "looks_maxxing",
+    orange_wig: "okay_wig",
+    bleached_hair: "blonde_bleached",
+    bob: "bob_cut",
+    bearded: "beard",
+    bearded_holiday: "beard",
+    sweat_hearts: "sweet_hearts",
+    elf: "elf_cutout",
+    santa: "santa_cutout",
+    easter_bunny: "easter_bunney_cutout",
+    easter_chick: "easter_chick_cutout",
+    photobooth_4cut: "photobooth",
+    pb_scrapbook_ripped_4cut: "photobooth_cute",
+    pb_ripped_paper_4cut: "photobooth_cute",
+    pb_denim_ripped_2x2: "photobooth"
   };
 
   function respondWithImage(imgUrl, provider, filterId) {
@@ -1147,15 +1219,18 @@ export function generateDirectFilterScript(): string {
       } catch (e) {}
     }
     const inner = (raw && raw.data && typeof raw.data === "object") ? raw.data : (raw || {});
-    const merged = Object.assign({}, raw, inner, (inner && inner.filter && typeof inner.filter === "object") ? inner.filter : {});
+    const subPayload = (inner && inner.payload && typeof inner.payload === "object") ? inner.payload : {};
+    const subFilter = (inner && inner.filter && typeof inner.filter === "object") ? inner.filter : {};
+    const merged = Object.assign({}, raw, inner, subPayload, subFilter);
 
     let filterId = String(
       merged.filter_id || merged.filterId || merged.sticker_id || merged.stickerId ||
       merged.preset_id || merged.presetId || merged.template_id || merged.effect_id ||
-      merged.filter || ""
+      merged.filter || merged.id || ""
     ).trim().toLowerCase();
     if (filterId.startsWith("stk_dio_")) filterId = filterId.slice(8);
     else if (filterId.startsWith("stk_")) filterId = filterId.slice(4);
+    if (FILTER_ALIASES[filterId]) filterId = FILTER_ALIASES[filterId];
 
     const userPrompt = String(merged.prompt || merged.custom_prompt || merged.text || merged.description || "").trim();
     const hint = FILTER_HINTS[filterId] || (filterId ? filterId.replace(/_/g, " ") + " filter aesthetic" : "aesthetic portrait photography");
@@ -1163,34 +1238,37 @@ export function generateDirectFilterScript(): string {
 
     const rawImg = String(
       merged.image_base64 || merged.imageBase64 || merged.photo_base64 ||
-      merged.source_base64 || merged.input_base64 || merged.base64 ||
+      merged.source_base64 || merged.input_base64 || merged.image_data || merged.base64 ||
       ((merged.image && !/^https?:\\/\\//i.test(merged.image)) ? merged.image : "") ||
       ((merged.photo && !/^https?:\\/\\//i.test(merged.photo)) ? merged.photo : "") ||
       ""
     );
     const cleanBase64 = rawImg.replace(/^data:image\\/[a-zA-Z0-9+.-]+;base64,/, "").trim();
 
-    if (cleanBase64.length < 64 || typeof $httpClient === "undefined") {
+    if (typeof $httpClient === "undefined") {
       respondWithImage(buildPollinationsUrl(fullPrompt), "pollinations-direct", filterId);
       return;
     }
 
-    const submitBody = JSON.stringify({
+    const hasSource = cleanBase64.length >= 64;
+    const submitPayload = {
       prompt: fullPrompt,
       params: {
         width: 512,
         height: 640,
         steps: 18,
         n: 1,
-        sampler_name: "k_euler_a",
-        denoising_strength: 0.58
+        sampler_name: "k_euler_a"
       },
-      source_image: cleanBase64,
-      source_processing: "img2img",
       nsfw: false,
       censor_nsfw: true,
       r2: true
-    });
+    };
+    if (hasSource) {
+      submitPayload.params.denoising_strength = 0.58;
+      submitPayload.source_image = cleanBase64;
+      submitPayload.source_processing = "img2img";
+    }
 
     $httpClient.post(
       {
@@ -1200,8 +1278,8 @@ export function generateDirectFilterScript(): string {
           "apikey": "0000000000",
           "Client-Agent": "LocketGitRawDirect:1.0:ios"
         },
-        body: submitBody,
-        timeout: 10
+        body: JSON.stringify(submitPayload),
+        timeout: 12
       },
       function (err, resp, data) {
         if (err || !data) {
@@ -1218,7 +1296,7 @@ export function generateDirectFilterScript(): string {
         }
 
         let attempts = 0;
-        const maxAttempts = 12;
+        const maxAttempts = 24;
         function pollStatus() {
           attempts += 1;
           $httpClient.get(
@@ -1232,7 +1310,7 @@ export function generateDirectFilterScript(): string {
               try {
                 chk = cBody ? JSON.parse(cBody) : {};
               } catch (e) {}
-              if (chk.faulted || (!chk.done && attempts >= maxAttempts) || (attempts >= 3 && typeof chk.wait_time === "number" && chk.wait_time > 35)) {
+              if (chk.faulted || chk.is_possible === false || (!chk.done && attempts >= maxAttempts)) {
                 respondWithImage(buildPollinationsUrl(fullPrompt), "pollinations-fallback", filterId);
                 return;
               }
@@ -1250,7 +1328,7 @@ export function generateDirectFilterScript(): string {
                       imgUrl = st.generations && st.generations[0] && st.generations[0].img ? st.generations[0].img : "";
                     } catch (e) {}
                     if (imgUrl && imgUrl.startsWith("http")) {
-                      respondWithImage(imgUrl, "ai-horde-img2img-direct", filterId);
+                      respondWithImage(imgUrl, hasSource ? "ai-horde-img2img-direct" : "ai-horde-txt2img-direct", filterId);
                     } else {
                       respondWithImage(buildPollinationsUrl(fullPrompt), "pollinations-fallback", filterId);
                     }
@@ -1258,11 +1336,11 @@ export function generateDirectFilterScript(): string {
                 );
                 return;
               }
-              setTimeout(pollStatus, 2000);
+              setTimeout(pollStatus, 1800);
             }
           );
         }
-        setTimeout(pollStatus, 2000);
+        setTimeout(pollStatus, 1800);
       }
     );
   } catch (e) {
@@ -1425,7 +1503,7 @@ export function generateMergedLocketConf(
 ${rewriteLines.join('\n')}
 
 [mitm]
-hostname = api.revenuecat.com, firebaseremoteconfig.googleapis.com, -analytics.locketcamera.com, -cdn.locketcamera.com, api.locketcamera.com, us-central1-locket-4252a.cloudfunctions.net, *.cloudfunctions.net, *-uc.a.run.app
+hostname = api.revenuecat.com, firebaseremoteconfig.googleapis.com, -analytics.locketcamera.com, -cdn.locketcamera.com, api.locketcamera.com, us-central1-locket-4252a.cloudfunctions.net, *.cloudfunctions.net, *.a.run.app
 `;
   }
 
@@ -1441,18 +1519,17 @@ hostname = api.revenuecat.com, firebaseremoteconfig.googleapis.com, -analytics.l
   }
   if (options.enableTrafficProbe && !directNoServer) {
     scriptLines.push(
-      `locket_probe = type=http-request, pattern=^https:\\/\\/(?!(analytics|cdn)\\.).*(locketcamera\\.com|cloudfunctions\\.net|uc\\.a\\.run\\.app)\\/.*, script-path=${cleanServer}/scripts/locket_traffic_probe.js, requires-body=true, max-size=1048576, timeout=5`,
+      `locket_probe = type=http-request, pattern=^https:\\/\\/(?!(analytics|cdn)\\.).*(locketcamera\\.com|cloudfunctions\\.net|a\\.run\\.app)\\/.*, script-path=${cleanServer}/scripts/locket_traffic_probe.js, requires-body=true, max-size=1048576, timeout=5`,
       `locket_probe_res = type=http-response, pattern=^https:\\/\\/api\\.locketcamera\\.com\\/(getFilters|.*[Ff]ilter.*), script-path=${cleanServer}/scripts/locket_response_probe.js, requires-body=true, max-size=1048576, timeout=5`
     );
   }
   if (directNoServer) {
     scriptLines.push(
-      `locket_ai_filter_direct = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=0, timeout=60`
+      `locket_ai_filter_direct = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`
     );
   } else {
     scriptLines.push(
-      `locket_ai_filter_req = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`,
-      `locket_ai_filter_res = type=http-response, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`
+      `locket_ai_filter_req = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`
     );
   }
 
@@ -1464,7 +1541,7 @@ hostname = api.revenuecat.com, firebaseremoteconfig.googleapis.com, -analytics.l
     'api.locketcamera.com',
     'us-central1-locket-4252a.cloudfunctions.net',
     '*.cloudfunctions.net',
-    '*-uc.a.run.app',
+    '*.a.run.app',
   ];
 
   return `# Locket Gold + In-App Filter AI (${client.toUpperCase()})
@@ -1520,27 +1597,35 @@ function arrayBufferToBase64(buffer) {
 }
 
 async function runImg2ImgHorde(prompt, cleanBase64) {
+  const hasSource = Boolean(cleanBase64 && cleanBase64.length > 64);
+  const payload = {
+    prompt,
+    params: {
+      width: 512,
+      height: 640,
+      steps: 20,
+      n: 1,
+      sampler_name: "k_euler_a",
+      ...(hasSource ? { denoising_strength: 0.58 } : {})
+    },
+    ...(hasSource ? { source_image: cleanBase64, source_processing: "img2img" } : {}),
+    nsfw: false,
+    censor_nsfw: true,
+    r2: true
+  };
   const submit = await fetch("https://aihorde.net/api/v2/generate/async", {
     method: "POST",
     headers: { "Content-Type": "application/json", apikey: "0000000000", "Client-Agent": "LocketCFWorker:1.0" },
-    body: JSON.stringify({
-      prompt,
-      params: { width: 512, height: 640, steps: 20, n: 1, sampler_name: "k_euler_a", denoising_strength: 0.58 },
-      source_image: cleanBase64,
-      source_processing: "img2img",
-      nsfw: false,
-      censor_nsfw: true,
-      r2: true
-    })
+    body: JSON.stringify(payload)
   });
   if (!submit.ok) throw new Error("Horde submit " + submit.status);
   const { id } = await submit.json();
   if (!id) throw new Error("Missing Horde id");
 
-  for (let i = 0; i < 14; i++) {
-    await new Promise((r) => setTimeout(r, 1500));
+  for (let i = 0; i < 24; i++) {
+    await new Promise((r) => setTimeout(r, 1800));
     const chk = await (await fetch("https://aihorde.net/api/v2/generate/check/" + id)).json();
-    if (chk.faulted) throw new Error("Horde faulted");
+    if (chk.faulted || chk.is_possible === false) throw new Error("Horde faulted");
     if (chk.done) {
       const st = await (await fetch("https://aihorde.net/api/v2/generate/status/" + id)).json();
       const imgUrl = st.generations?.[0]?.img;
@@ -1583,16 +1668,13 @@ export default {
       }
 
       let outputUrl = "";
-      let provider = "pollinations-flux";
-      if (cleanBase64.length > 64) {
-        try {
-          outputUrl = await runImg2ImgHorde(fullPrompt, cleanBase64);
-          provider = "ai-horde-img2img";
-        } catch {}
-      }
-      if (!outputUrl) {
+      let provider = cleanBase64.length > 64 ? "ai-horde-img2img" : "ai-horde-txt2img";
+      try {
+        outputUrl = await runImg2ImgHorde(fullPrompt, cleanBase64);
+      } catch {
         const seed = Math.floor(Math.random() * 1000000);
         outputUrl = "https://image.pollinations.ai/prompt/" + encodeURIComponent(fullPrompt) + "?width=768&height=1024&model=flux&seed=" + seed + "&nologo=true";
+        provider = "pollinations-fallback";
       }
 
       const dataNode = { status: 200, outputUrl, output_url: outputUrl, url: outputUrl, imageUrl: outputUrl, image_url: outputUrl };

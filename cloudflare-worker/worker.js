@@ -30,27 +30,35 @@ function arrayBufferToBase64(buffer) {
 }
 
 async function runImg2ImgHorde(prompt, cleanBase64) {
+  const hasSource = Boolean(cleanBase64 && cleanBase64.length > 64);
+  const payload = {
+    prompt,
+    params: {
+      width: 512,
+      height: 640,
+      steps: 20,
+      n: 1,
+      sampler_name: "k_euler_a",
+      ...(hasSource ? { denoising_strength: 0.58 } : {})
+    },
+    ...(hasSource ? { source_image: cleanBase64, source_processing: "img2img" } : {}),
+    nsfw: false,
+    censor_nsfw: true,
+    r2: true
+  };
   const submit = await fetch("https://aihorde.net/api/v2/generate/async", {
     method: "POST",
     headers: { "Content-Type": "application/json", apikey: "0000000000", "Client-Agent": "LocketCFWorker:1.0" },
-    body: JSON.stringify({
-      prompt,
-      params: { width: 512, height: 640, steps: 20, n: 1, sampler_name: "k_euler_a", denoising_strength: 0.58 },
-      source_image: cleanBase64,
-      source_processing: "img2img",
-      nsfw: false,
-      censor_nsfw: true,
-      r2: true
-    })
+    body: JSON.stringify(payload)
   });
   if (!submit.ok) throw new Error("Horde submit " + submit.status);
   const { id } = await submit.json();
   if (!id) throw new Error("Missing Horde id");
 
-  for (let i = 0; i < 14; i++) {
-    await new Promise((r) => setTimeout(r, 1500));
+  for (let i = 0; i < 24; i++) {
+    await new Promise((r) => setTimeout(r, 1800));
     const chk = await (await fetch("https://aihorde.net/api/v2/generate/check/" + id)).json();
-    if (chk.faulted) throw new Error("Horde faulted");
+    if (chk.faulted || chk.is_possible === false) throw new Error("Horde faulted");
     if (chk.done) {
       const st = await (await fetch("https://aihorde.net/api/v2/generate/status/" + id)).json();
       const imgUrl = st.generations?.[0]?.img;
@@ -93,16 +101,13 @@ export default {
       }
 
       let outputUrl = "";
-      let provider = "pollinations-flux";
-      if (cleanBase64.length > 64) {
-        try {
-          outputUrl = await runImg2ImgHorde(fullPrompt, cleanBase64);
-          provider = "ai-horde-img2img";
-        } catch {}
-      }
-      if (!outputUrl) {
+      let provider = cleanBase64.length > 64 ? "ai-horde-img2img" : "ai-horde-txt2img";
+      try {
+        outputUrl = await runImg2ImgHorde(fullPrompt, cleanBase64);
+      } catch {
         const seed = Math.floor(Math.random() * 1000000);
         outputUrl = "https://image.pollinations.ai/prompt/" + encodeURIComponent(fullPrompt) + "?width=768&height=1024&model=flux&seed=" + seed + "&nologo=true";
+        provider = "pollinations-fallback";
       }
 
       const dataNode = { status: 200, outputUrl, output_url: outputUrl, url: outputUrl, imageUrl: outputUrl, image_url: outputUrl };

@@ -88,6 +88,10 @@ test('DEFAULT_SHADOWROCKET_AI_PATTERN matches generateFilteredImage & filter end
     true
   );
   assert.equal(
+    regex.test('https://generatefilteredimage-abc123-uc.a.run.app/'),
+    true
+  );
+  assert.equal(
     regex.test('https://api.locketcamera.com/v1/photobooth'),
     true
   );
@@ -169,29 +173,59 @@ test('generateFilterUnlockScript unlocks user permissions & strips locks with ze
   assert.equal(parsed.result.data.can_generate_filtered_image, true);
   assert.equal(parsed.result.data.is_locked, false);
   assert.equal(parsed.result.data.requires_gold, false);
+  assert.equal(parsed.result.data.remaining_filters, 999);
+
+  let okRes: { status?: number; body?: string } | undefined;
+  vm.runInNewContext(script, {
+    $request: { url: 'https://api.locketcamera.com/getAccount', headers: {} },
+    $response: {
+      status: 200,
+      headers: { ':status': '200', 'content-type': 'application/json' },
+      body: JSON.stringify({ result: { data: { email: 'user@example.com', can_use_filters: false } } }),
+    },
+    $done: (out: { status?: number; body?: string }) => {
+      okRes = out;
+    },
+  });
+  assert.ok(okRes?.body);
+  assert.equal(okRes?.status, undefined);
 });
 
-test('generateMitmRedirectScript redirects generateFilteredImage to self-hosted server and cleans responses', () => {
+test('generateMitmRedirectScript forwards generateFilteredImage via $httpClient.post and returns clean 200 response', () => {
   const srScript = generateMitmRedirectScript('https://free-ai.onrender.com/', 'shadowrocket');
   assert.ok(srScript.includes('https://free-ai.onrender.com/generateFilteredImage'));
   assert.equal(srScript.includes('locket-mod-backend.onrender.com'), false);
 
-  let reqDone: { url?: string; headers?: Record<string, string> } | undefined;
+  let forwardedUrl = '';
+  let forwardedHost = '';
+  let reqDone: { response?: { status?: number; body?: string } } | undefined;
   vm.runInNewContext(srScript, {
     $request: {
       url: 'https://api.locketcamera.com/generateFilteredImage?v=2',
       headers: { Host: 'api.locketcamera.com', Authorization: 'Bearer abc' },
       body: '{"data":{"filter_id":"flower_crown"}}',
     },
-    $done: (out: { url?: string; headers?: Record<string, string> }) => {
+    $httpClient: {
+      post: (
+        opts: { url: string; headers: Record<string, string>; body: string },
+        cb: (err: unknown, resp: unknown, data: string) => void
+      ) => {
+        forwardedUrl = opts.url;
+        forwardedHost = opts.headers.Host;
+        cb(null, { status: 200 }, JSON.stringify({ ok: true, error: 'ignore', result: { outputUrl: 'https://cdn/out.jpg' } }));
+      },
+    },
+    $done: (out: { response?: { status?: number; body?: string } }) => {
       reqDone = out;
     },
   });
-  if (!reqDone) assert.fail('Expected $done to be called');
-  const resolvedReq: { url?: string; headers?: Record<string, string> } = reqDone;
-  assert.equal(resolvedReq.url, 'https://free-ai.onrender.com/generateFilteredImage?v=2');
-  assert.equal(resolvedReq.headers?.Host, 'free-ai.onrender.com');
-  assert.equal(resolvedReq.headers?.Authorization, 'Bearer abc');
+  assert.equal(forwardedUrl, 'https://free-ai.onrender.com/generateFilteredImage?v=2');
+  assert.equal(forwardedHost, 'free-ai.onrender.com');
+  if (!reqDone || !reqDone.response) assert.fail('Expected $done({ response }) to be called');
+  assert.equal(reqDone.response.status, 200);
+  const parsedOut = JSON.parse(reqDone.response.body || '{}');
+  assert.equal(parsedOut.error, undefined);
+  assert.equal(parsedOut.result.outputUrl, 'https://cdn/out.jpg');
 });
 
 test('generateMergedLocketConf includes Gold, filter unlock, generateFilteredImage hooks, and strictly excludes non-Locket clutter', () => {
@@ -208,12 +242,11 @@ test('generateMergedLocketConf includes Gold, filter unlock, generateFilteredIma
   assert.ok(conf.includes('locket_filter_unlock_req = type=http-request'));
   assert.ok(conf.includes('locket_filter_unlock_res = type=http-response'));
   assert.ok(conf.includes('locket_ai_filter_req = type=http-request'));
-  assert.ok(conf.includes('locket_ai_filter_res = type=http-response'));
   assert.ok(conf.includes('locket_probe = type=http-request'));
   assert.ok(conf.includes('locket_probe_res = type=http-response'));
   assert.ok(conf.includes('-analytics.locketcamera.com'));
   assert.ok(conf.includes('-cdn.locketcamera.com'));
-  assert.ok(conf.includes('*-uc.a.run.app'));
+  assert.ok(conf.includes('*.a.run.app'));
   assert.ok(conf.includes('us-central1-locket-4252a.cloudfunctions.net'));
   assert.equal(/youtube|googlevideo|hostsvn|phl|phamlong/i.test(conf), false);
 });
@@ -279,6 +312,8 @@ test('generateMergedLocketConf supports 100% pure GitHub Raw direct mode and Clo
   });
   assert.ok(gitDirectConf.includes('https://raw.githubusercontent.com/vdatdv/locketAI/main/github-raw/scripts/locket_ai_direct.js'));
   assert.ok(gitDirectConf.includes('locket_ai_filter_direct = type=http-request'));
+  assert.ok(gitDirectConf.includes('max-size=-1'));
+  assert.equal(gitDirectConf.includes('max-size=0'), false);
   assert.equal(gitDirectConf.includes('locket_ai_filter_res'), false);
 
   const workerCode = generateStandaloneServerCode('worker');

@@ -1,7 +1,7 @@
 // ============================================================
 // Locket In-App AI Filter Direct (100% GitHub Raw · 0 Server)
 // Chạy trực tiếp trên Shadowrocket/Loon/Surge khi bấm Filter trong Locket
-// Hỗ trợ Img2Img (AI Horde R2 HTTPS) + Fallback Pollinations Flux
+// Dùng AI Horde R2 HTTPS (hỗ trợ cả Img2Img selfie + Txt2Img khi thiếu base64)
 // ============================================================
 
 (function () {
@@ -22,6 +22,7 @@
     mohawk: "bold punk mohawk hairstyle transformation, dramatic studio lighting",
     braces: "cute smiling portrait with colorful sparkly orthodontic braces",
     beard: "full well-groomed realistic beard transformation, warm portrait lighting",
+    bowling_ball: "smooth shiny bald head transformation, humorous realistic studio portrait",
     bye_brows: "avant-garde bleached invisible eyebrows editorial fashion look",
     toothless: "hilarious goofy toothless smile comedy portrait effect",
     looks_maxxing: "sharp chiseled jawline dramatic black and white lighting",
@@ -54,6 +55,27 @@
     pirate_hat: "wearing a classic pirate captain tricorne hat, adventure aesthetic",
     ocean_underwater: "underwater sunlight caustic ripples, dreamy aqua blue glow",
     fireworks: "bright colorful night fireworks bursting behind portrait"
+  };
+
+  const FILTER_ALIASES = {
+    disco: "disco_lights",
+    cash: "cash_money",
+    cowboy: "cowboy_cowgirl",
+    looksmaxing: "looks_maxxing",
+    orange_wig: "okay_wig",
+    bleached_hair: "blonde_bleached",
+    bob: "bob_cut",
+    bearded: "beard",
+    bearded_holiday: "beard",
+    sweat_hearts: "sweet_hearts",
+    elf: "elf_cutout",
+    santa: "santa_cutout",
+    easter_bunny: "easter_bunney_cutout",
+    easter_chick: "easter_chick_cutout",
+    photobooth_4cut: "photobooth",
+    pb_scrapbook_ripped_4cut: "photobooth_cute",
+    pb_ripped_paper_4cut: "photobooth_cute",
+    pb_denim_ripped_2x2: "photobooth"
   };
 
   function respondWithImage(imgUrl, provider, filterId) {
@@ -103,15 +125,18 @@
       } catch (e) {}
     }
     const inner = (raw && raw.data && typeof raw.data === "object") ? raw.data : (raw || {});
-    const merged = Object.assign({}, raw, inner, (inner && inner.filter && typeof inner.filter === "object") ? inner.filter : {});
+    const subPayload = (inner && inner.payload && typeof inner.payload === "object") ? inner.payload : {};
+    const subFilter = (inner && inner.filter && typeof inner.filter === "object") ? inner.filter : {};
+    const merged = Object.assign({}, raw, inner, subPayload, subFilter);
 
     let filterId = String(
       merged.filter_id || merged.filterId || merged.sticker_id || merged.stickerId ||
       merged.preset_id || merged.presetId || merged.template_id || merged.effect_id ||
-      merged.filter || ""
+      merged.filter || merged.id || ""
     ).trim().toLowerCase();
     if (filterId.startsWith("stk_dio_")) filterId = filterId.slice(8);
     else if (filterId.startsWith("stk_")) filterId = filterId.slice(4);
+    if (FILTER_ALIASES[filterId]) filterId = FILTER_ALIASES[filterId];
 
     const userPrompt = String(merged.prompt || merged.custom_prompt || merged.text || merged.description || "").trim();
     const hint = FILTER_HINTS[filterId] || (filterId ? filterId.replace(/_/g, " ") + " filter aesthetic" : "aesthetic portrait photography");
@@ -119,34 +144,37 @@
 
     const rawImg = String(
       merged.image_base64 || merged.imageBase64 || merged.photo_base64 ||
-      merged.source_base64 || merged.input_base64 || merged.base64 ||
+      merged.source_base64 || merged.input_base64 || merged.image_data || merged.base64 ||
       ((merged.image && !/^https?:\/\//i.test(merged.image)) ? merged.image : "") ||
       ((merged.photo && !/^https?:\/\//i.test(merged.photo)) ? merged.photo : "") ||
       ""
     );
     const cleanBase64 = rawImg.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "").trim();
 
-    if (cleanBase64.length < 64 || typeof $httpClient === "undefined") {
+    if (typeof $httpClient === "undefined") {
       respondWithImage(buildPollinationsUrl(fullPrompt), "pollinations-direct", filterId);
       return;
     }
 
-    const submitBody = JSON.stringify({
+    const hasSource = cleanBase64.length >= 64;
+    const submitPayload = {
       prompt: fullPrompt,
       params: {
         width: 512,
         height: 640,
         steps: 18,
         n: 1,
-        sampler_name: "k_euler_a",
-        denoising_strength: 0.58
+        sampler_name: "k_euler_a"
       },
-      source_image: cleanBase64,
-      source_processing: "img2img",
       nsfw: false,
       censor_nsfw: true,
       r2: true
-    });
+    };
+    if (hasSource) {
+      submitPayload.params.denoising_strength = 0.58;
+      submitPayload.source_image = cleanBase64;
+      submitPayload.source_processing = "img2img";
+    }
 
     $httpClient.post(
       {
@@ -156,8 +184,8 @@
           "apikey": "0000000000",
           "Client-Agent": "LocketGitRawDirect:1.0:ios"
         },
-        body: submitBody,
-        timeout: 10
+        body: JSON.stringify(submitPayload),
+        timeout: 12
       },
       function (err, resp, data) {
         if (err || !data) {
@@ -174,7 +202,7 @@
         }
 
         let attempts = 0;
-        const maxAttempts = 12;
+        const maxAttempts = 24;
         function pollStatus() {
           attempts += 1;
           $httpClient.get(
@@ -188,7 +216,7 @@
               try {
                 chk = cBody ? JSON.parse(cBody) : {};
               } catch (e) {}
-              if (chk.faulted || (!chk.done && attempts >= maxAttempts) || (attempts >= 3 && typeof chk.wait_time === "number" && chk.wait_time > 35)) {
+              if (chk.faulted || chk.is_possible === false || (!chk.done && attempts >= maxAttempts)) {
                 respondWithImage(buildPollinationsUrl(fullPrompt), "pollinations-fallback", filterId);
                 return;
               }
@@ -206,7 +234,7 @@
                       imgUrl = st.generations && st.generations[0] && st.generations[0].img ? st.generations[0].img : "";
                     } catch (e) {}
                     if (imgUrl && imgUrl.startsWith("http")) {
-                      respondWithImage(imgUrl, "ai-horde-img2img-direct", filterId);
+                      respondWithImage(imgUrl, hasSource ? "ai-horde-img2img-direct" : "ai-horde-txt2img-direct", filterId);
                     } else {
                       respondWithImage(buildPollinationsUrl(fullPrompt), "pollinations-fallback", filterId);
                     }
@@ -214,11 +242,11 @@
                 );
                 return;
               }
-              setTimeout(pollStatus, 2000);
+              setTimeout(pollStatus, 1800);
             }
           );
         }
-        setTimeout(pollStatus, 2000);
+        setTimeout(pollStatus, 1800);
       }
     );
   } catch (e) {

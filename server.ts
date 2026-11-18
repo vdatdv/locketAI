@@ -662,6 +662,7 @@ if (typeof obj === "object" && obj && obj.entries && ua.includes("Locket")) {
         fg.ai_filters = "enabled";
         fg.custom_filters = "enabled";
         fg.filters = "enabled";
+        fg.photobooth = "enabled";
         obj.entries.feature_gates = JSON.stringify(fg);
     } catch (e) {}
     try {
@@ -670,6 +671,7 @@ if (typeof obj === "object" && obj && obj.entries && ua.includes("Locket")) {
         uf.ai_filters = true;
         uf.custom_filters = true;
         uf.filters = true;
+        uf.photobooth = true;
         obj.entries.upsell_features = JSON.stringify(uf);
     } catch (e) {}
     Object.assign(obj.entries, {
@@ -677,7 +679,10 @@ if (typeof obj === "object" && obj && obj.entries && ua.includes("Locket")) {
         custom_filters_enabled: "true",
         filter_generation_enabled: "true",
         ai_camera_filters_enabled: "true",
-        camera_filters_enabled: "true"
+        camera_filters_enabled: "true",
+        photobooth_enabled: "true",
+        unlimited_filters: "true",
+        camera_filters_free_tier_enabled: "true"
     });
 }
 $done({ body: JSON.stringify(obj) });`;
