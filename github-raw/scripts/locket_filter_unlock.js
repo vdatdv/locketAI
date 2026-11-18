@@ -163,6 +163,83 @@
   };
 
   transformNode(obj);
+
+  if (/getfilters/i.test(reqUrl)) {
+    const NATIVE_FILTER_CATALOG = [
+      { id: "flower_crown", name: "Flower Crown", category: "Cute" },
+      { id: "cutesy", name: "Cutesy", category: "Cute" },
+      { id: "sticker_face", name: "Sticker Face", category: "Cute" },
+      { id: "love_bug", name: "Love Bug", category: "Cute" },
+      { id: "princess", name: "Princess", category: "Celebrate" },
+      { id: "disco_lights", name: "Disco Lights", category: "Celebrate" },
+      { id: "cash_money", name: "Cash Money", category: "Celebrate" },
+      { id: "happy_birthday", name: "Happy Birthday", category: "Celebrate" },
+      { id: "blonde_bleached", name: "Blonde Bleached", category: "Looks" },
+      { id: "bob_cut", name: "Bob Cut", category: "Looks" },
+      { id: "buns", name: "Space Buns", category: "Looks" },
+      { id: "tatted", name: "Tatted", category: "Looks" },
+      { id: "mohawk", name: "Mohawk", category: "Looks" },
+      { id: "okay_wig", name: "Okay Wig", category: "Goofy" },
+      { id: "influencer", name: "Influencer", category: "Goofy" },
+      { id: "looks_maxxing", name: "Looks Maxxing", category: "Goofy" },
+      { id: "wedding", name: "Wedding", category: "Costumes" },
+      { id: "cowboy_cowgirl", name: "Cowboy", category: "Costumes" },
+      { id: "clown", name: "Clown", category: "Costumes" },
+      { id: "photobooth", name: "Photobooth 4-Cut", category: "Photobooth" },
+      { id: "photobooth_cute", name: "Photobooth Cute", category: "Photobooth" },
+      { id: "pb_strawberry", name: "Strawberry Strip", category: "Photobooth" },
+      { id: "pb_vintage", name: "Vintage Y2K", category: "Photobooth" },
+      { id: "pb_galaxy", name: "Galaxy 4-Cut", category: "Photobooth" },
+      { id: "pb_holo_4cut", name: "Holo 4-Cut", category: "Photobooth" },
+      { id: "golden_hour", name: "Golden Hour", category: "Artistic" },
+      { id: "watercolor_art", name: "Watercolor Art", category: "Artistic" },
+      { id: "harry_potter", name: "Wizard", category: "Costumes" }
+    ].map(function (item, idx) {
+      return {
+        id: item.id,
+        filter_id: item.id,
+        slug: item.id,
+        name: item.name,
+        display_name: item.name,
+        category: item.category,
+        type: "ai",
+        is_locked: false,
+        requires_gold: false,
+        is_gold_only: false,
+        unlocked: true,
+        is_unlocked: true,
+        is_free: true,
+        can_use: true,
+        enabled: true,
+        sort_order: idx + 1
+      };
+    });
+
+    const populateFiltersContainer = (container) => {
+      if (!container || typeof container !== "object") return;
+      if (!Array.isArray(container.filters) || container.filters.length === 0) {
+        container.filters = NATIVE_FILTER_CATALOG;
+      }
+      if (!Array.isArray(container.friend_filters)) {
+        container.friend_filters = [];
+      }
+      container.can_use_filters = true;
+      container.can_generate_filtered_image = true;
+      container.can_use_photobooth = true;
+      container.filters_enabled = true;
+    };
+
+    if (obj.result && obj.result.data && typeof obj.result.data === "object") {
+      populateFiltersContainer(obj.result.data);
+    } else if (obj.data && typeof obj.data === "object") {
+      populateFiltersContainer(obj.data);
+    } else if (obj.result && typeof obj.result === "object") {
+      populateFiltersContainer(obj.result);
+    } else {
+      populateFiltersContainer(obj);
+    }
+  }
+
   const finalBody = JSON.stringify(obj);
 
   if (upgradedStatus) {

@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import crypto from 'node:crypto';
 import express, { type Request, type Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -10,10 +11,12 @@ import {
   generateFilterUnlockScript,
   generateMergedLocketConf,
   generateMitmRedirectScript,
+  generateMomentAiFilterScript,
   generateResponseProbeScript,
   generateStandaloneServerCode,
   generateTrafficProbeScript,
   getDimensionsForAspectRatio,
+  patchForceGoldScript,
   type AspectRatioOption,
   type FreeAiModel,
   type ProxyClient,
@@ -565,8 +568,10 @@ async function startServer() {
       endpoints: {
         generate: '/api/ai/generate',
         generateFilteredImage: '/generateFilteredImage',
+        momentAiFilter: '/api/locket/moment-ai-filter',
         locketProxy: '/api/locket/ai-generate',
         mitmScript: '/scripts/locket_ai_redirect.js',
+        momentAiScript: '/scripts/locket_ai_moment.js',
         filterUnlockScript: '/scripts/locket_filter_unlock.js',
         forceGoldScript: '/scripts/forceGold4.3.js',
         media: '/api/locket/media/:id.jpg',
@@ -614,6 +619,163 @@ async function startServer() {
     });
   });
 
+  // Caption-Triggered Moment AI Filter Override (intercepted from postMomentV2)
+  app.post('/api/locket/moment-ai-filter', async (req, res) => {
+    const startedAt = Date.now();
+    try {
+      const wrapper = (req.body || {}) as {
+        originalUrl?: string;
+        headers?: Record<string, string>;
+        payload?: Record<string, unknown>;
+      };
+      const rawPayload = (wrapper.payload && typeof wrapper.payload === 'object'
+        ? wrapper.payload
+        : req.body) as Record<string, unknown>;
+      const fwdHeaders = wrapper.headers || {};
+
+      const isCallable = Boolean(rawPayload.data && typeof rawPayload.data === 'object');
+      const inner = (isCallable
+        ? { ...(rawPayload.data as Record<string, unknown>) }
+        : { ...rawPayload }) as Record<string, unknown>;
+
+      let filterId = '';
+      const overlays = Array.isArray(inner.overlays) ? (inner.overlays as Array<Record<string, unknown>>) : [];
+      for (const ov of overlays) {
+        const oid = String((ov && (ov.overlay_id || ov.id)) || '');
+        if (oid.startsWith('caption:ai_filter_')) {
+          filterId = oid.slice('caption:ai_filter_'.length).trim();
+          break;
+        }
+      }
+
+      const origCaption = String(inner.caption || '').trim();
+      let customPrompt = '';
+      if (/^#ai\b|^\/ai\b|^ai:/i.test(origCaption)) {
+        customPrompt = origCaption.replace(/^(#ai|\/ai|ai:)\s*/i, '').trim();
+        inner.caption = customPrompt;
+      } else if (filterId && origCaption.startsWith('AI · ')) {
+        inner.caption = origCaption.replace(/^AI ·\s*/, '').trim();
+      }
+
+      const sourceUrl = String(
+        inner.thumbnail_url || inner.image_url || inner.photo_url || inner.media_url || ''
+      ).trim();
+
+      if (!filterId && !customPrompt) {
+        return res.json({ ok: false, skipped: true });
+      }
+
+      const { prompt: translatedPrompt } = await translatePromptIfNeeded(customPrompt);
+      const enhancedPrompt = buildEnhancedPrompt(customPrompt, 'natural', translatedPrompt, filterId || undefined);
+      const sourceBase64 = sourceUrl ? await fetchRemoteImageAsBase64(sourceUrl) : '';
+
+      let imageDataUrl = '';
+      let provider = '';
+      if (sourceBase64.length > 32) {
+        try {
+          const hordeRes = await fetchFromAiHorde(enhancedPrompt, '3:4', sourceBase64);
+          imageDataUrl = hordeRes.imageDataUrl;
+          provider = hordeRes.provider;
+        } catch {
+          const fallbackRes = await fetchFromPollinationsWithRetry(enhancedPrompt, 768, 1024, 'flux');
+          imageDataUrl = fallbackRes.imageDataUrl;
+          provider = fallbackRes.provider;
+        }
+      } else {
+        const genRes = await fetchFromPollinationsWithRetry(enhancedPrompt, 768, 1024, 'flux');
+        imageDataUrl = genRes.imageDataUrl;
+        provider = genRes.provider;
+      }
+
+      const { mediaId, ext } = storeMediaInCache(imageDataUrl);
+      const cached = mediaCache.get(mediaId);
+      const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+      const host = req.headers.host || `localhost:${PORT}`;
+      let finalImageUrl = `${proto}://${host}/api/locket/media/${mediaId}.${ext}`;
+      let storageUploaded = false;
+      let storageStatus = 'skipped';
+
+      const authHeader = fwdHeaders['Authorization'] || fwdHeaders['authorization'] || '';
+      const appCheckHeader = fwdHeaders['X-Firebase-AppCheck'] || fwdHeaders['x-firebase-appcheck'] || '';
+      const uidMatch = sourceUrl.match(/users(?:%2F|\/)([A-Za-z0-9_-]+)/);
+      const uid = uidMatch ? uidMatch[1] : '';
+
+      if (cached && authHeader && uid) {
+        try {
+          const objectPath = `users/${uid}/moments/ai_${Date.now()}.${ext}`;
+          const uploadUrl = `https://firebasestorage.googleapis.com/v0/b/locket-img/o?uploadType=media&name=${encodeURIComponent(objectPath)}`;
+          const upHeaders: Record<string, string> = {
+            Authorization: authHeader,
+            'Content-Type': cached.mime,
+          };
+          if (appCheckHeader) {
+            upHeaders['X-Firebase-AppCheck'] = appCheckHeader;
+          }
+          const upRes = await fetch(uploadUrl, {
+            method: 'POST',
+            headers: upHeaders,
+            body: new Uint8Array(cached.buffer),
+          });
+          storageStatus = `HTTP ${upRes.status}`;
+          if (upRes.ok) {
+            const upJson = (await upRes.json()) as { name?: string; downloadTokens?: string };
+            if (upJson.name && upJson.downloadTokens) {
+              const token = upJson.downloadTokens.split(',')[0].trim();
+              const useCdnHost = sourceUrl.includes('cdn.locketcamera.com')
+                ? 'cdn.locketcamera.com'
+                : 'firebasestorage.googleapis.com';
+              finalImageUrl = `https://${useCdnHost}/v0/b/locket-img/o/${encodeURIComponent(upJson.name)}?alt=media&token=${token}`;
+              storageUploaded = true;
+            }
+          }
+        } catch (upErr) {
+          storageStatus = upErr instanceof Error ? upErr.message : 'upload_error';
+        }
+      }
+
+      if (inner.thumbnail_url) inner.thumbnail_url = finalImageUrl;
+      if (inner.image_url) inner.image_url = finalImageUrl;
+      if (inner.md5 && cached) {
+        inner.md5 = crypto.createHash('md5').update(cached.buffer).digest('hex');
+      }
+
+      const updatedPayload = isCallable ? { ...rawPayload, data: inner } : inner;
+      const latencyMs = Date.now() - startedAt;
+      recordLog({
+        method: 'POST',
+        path: '/api/locket/moment-ai-filter',
+        status: 200,
+        latencyMs,
+        provider,
+        detail: [
+          filterId ? `[CaptionAI: ${filterId}]` : '[CaptionAI: #ai]',
+          sourceBase64 ? '[Img2Img]' : '[Txt2Img]',
+          `FirebaseStorage: ${storageUploaded ? 'OK' : storageStatus}`,
+        ].join(' · '),
+      });
+
+      return res.json({
+        ok: true,
+        provider,
+        storageUploaded,
+        storageStatus,
+        outputUrl: finalImageUrl,
+        payload: updatedPayload,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'moment-ai-filter error';
+      recordLog({
+        method: 'POST',
+        path: '/api/locket/moment-ai-filter',
+        status: 500,
+        latencyMs: Date.now() - startedAt,
+        provider: 'error',
+        detail: msg,
+      });
+      return res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
   // Clean self-hosted Locket Filter & Account Unlocker
   app.get('/scripts/locket_filter_unlock.js', (req, res) => {
     const startedAt = Date.now();
@@ -654,43 +816,7 @@ async function startServer() {
       return null;
     }
     const rawSource = fs.readFileSync(sourcePath, 'utf-8');
-    const aiFilterPatch = `
-if (typeof obj === "object" && obj && obj.entries && ua.includes("Locket")) {
-    try {
-        var fg = JSON.parse(obj.entries.feature_gates || "{}");
-        fg.camera_filters = "enabled";
-        fg.ai_filters = "enabled";
-        fg.custom_filters = "enabled";
-        fg.filters = "enabled";
-        fg.photobooth = "enabled";
-        obj.entries.feature_gates = JSON.stringify(fg);
-    } catch (e) {}
-    try {
-        var uf = JSON.parse(obj.entries.upsell_features || "{}");
-        uf.camera_filters = true;
-        uf.ai_filters = true;
-        uf.custom_filters = true;
-        uf.filters = true;
-        uf.photobooth = true;
-        obj.entries.upsell_features = JSON.stringify(uf);
-    } catch (e) {}
-    Object.assign(obj.entries, {
-        ai_filters_enabled: "true",
-        custom_filters_enabled: "true",
-        filter_generation_enabled: "true",
-        ai_camera_filters_enabled: "true",
-        camera_filters_enabled: "true",
-        photobooth_enabled: "true",
-        unlimited_filters: "true",
-        camera_filters_free_tier_enabled: "true"
-    });
-}
-$done({ body: JSON.stringify(obj) });`;
-
-    return rawSource.replace(
-      /\$done\(\{\s*body:\s*JSON\.stringify\(obj\)\s*\}\);?\s*$/,
-      aiFilterPatch
-    );
+    return patchForceGoldScript(rawSource);
   }
 
   // Patched forceGold4.3.js Remote Config script with AI filter flags enabled
@@ -750,6 +876,32 @@ $done({ body: JSON.stringify(obj) });`;
       latencyMs: Date.now() - startedAt,
       provider: 'script-host',
       detail: `Served MITM Filter redirect script (${client})`,
+    });
+
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.send(scriptBody);
+  });
+
+  // Caption AI Filter Override Script (postMomentV2 Img2Img interception)
+  app.get('/scripts/locket_ai_moment.js', (req, res) => {
+    const startedAt = Date.now();
+    const clientParam = String(req.query.client || 'shadowrocket').toLowerCase();
+    const client: ProxyClient =
+      clientParam === 'loon' || clientParam === 'surge' || clientParam === 'quantumultx'
+        ? clientParam
+        : 'shadowrocket';
+    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    const host = req.headers.host || `localhost:${PORT}`;
+    const origin = `${proto}://${host}`;
+    const scriptBody = generateMomentAiFilterScript(origin, client);
+
+    recordLog({
+      method: 'GET',
+      path: '/scripts/locket_ai_moment.js',
+      status: 200,
+      latencyMs: Date.now() - startedAt,
+      provider: 'script-host',
+      detail: `Served Caption AI Moment override script (${client})`,
     });
 
     res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
@@ -980,6 +1132,7 @@ $done({ body: JSON.stringify(obj) });`;
       { name: 'github-raw/scripts/locket_filter_unlock.js', data: Buffer.from(generateFilterUnlockScript(), 'utf8') },
       { name: 'github-raw/scripts/locket_ai_direct.js', data: Buffer.from(generateDirectFilterScript(), 'utf8') },
       { name: 'github-raw/scripts/locket_ai_redirect.js', data: Buffer.from(generateMitmRedirectScript(currentOrigin, 'shadowrocket'), 'utf8') },
+      { name: 'github-raw/scripts/locket_ai_moment.js', data: Buffer.from(generateMomentAiFilterScript(currentOrigin, 'shadowrocket'), 'utf8') },
       { name: 'cloudflare-worker/worker.js', data: Buffer.from(generateStandaloneServerCode('worker'), 'utf8') }
     );
 

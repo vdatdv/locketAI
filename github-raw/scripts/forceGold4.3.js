@@ -5,10 +5,14 @@
 // Dùng cho: Loon / Quantumult X / Surge / Shadowrocket
 // ============================================================
 
-var ua = $request.headers["User-Agent"] || $request.headers["user-agent"] || "";
-var obj = JSON.parse($response.body);
-
-if (ua.includes("Locket")) {
+function _runForceGold() {
+var ua = ($request && $request.headers && ($request.headers["User-Agent"] || $request.headers["user-agent"])) || "";
+var rcUrl = ($request && $request.url) || "";
+if (typeof $response === "undefined" || !$response || !$response.body) { $done({}); return; }
+var obj = null;
+try { obj = JSON.parse($response.body); } catch (e) { $done({}); return; }
+if (!obj || typeof obj !== "object") { $done({}); return; }
+if (ua.includes("Locket") || rcUrl.includes("locket-4252a")) {
     obj.Attention = "Chúc mừng bạn! Vui lòng không bán hoặc chia sẻ cho người khác!";
     obj.state = "UPDATE";
     obj.entries = obj.entries || {};
@@ -5482,7 +5486,7 @@ if (ua.includes("Locket")) {
 }
 
 
-if (typeof obj === "object" && obj && obj.entries && ua.includes("Locket")) {
+if (typeof obj === "object" && obj && obj.entries && (ua.includes("Locket") || rcUrl.includes("locket-4252a"))) {
     try {
         var fg = JSON.parse(obj.entries.feature_gates || "{}");
         fg.camera_filters = "enabled";
@@ -5501,6 +5505,45 @@ if (typeof obj === "object" && obj && obj.entries && ua.includes("Locket")) {
         uf.photobooth = true;
         obj.entries.upsell_features = JSON.stringify(uf);
     } catch (e) {}
+    try {
+        var existingFilterCfg = JSON.parse(obj.entries.camera_filter_config || "{}");
+        if (existingFilterCfg && typeof existingFilterCfg === "object") {
+            existingFilterCfg.allows_custom_filters = true;
+            existingFilterCfg.show_filter_button = true;
+            existingFilterCfg.sheet_enabled = true;
+            existingFilterCfg.open_sheet_immediately = true;
+            existingFilterCfg.filters_enabled = true;
+            existingFilterCfg.ai_filters_enabled = true;
+            existingFilterCfg.photobooth_enabled = true;
+            var pbIds = ["photobooth", "photobooth_cute", "pb_strawberry", "pb_vintage", "pb_galaxy", "pb_holo_4cut"];
+            if (Array.isArray(existingFilterCfg.sheet_filters)) {
+                var hasPbSection = existingFilterCfg.sheet_filters.some(function (s) {
+                    return s && s.title && (s.title.en === "Photobooth" || s.title === "Photobooth");
+                });
+                if (!hasPbSection) {
+                    existingFilterCfg.sheet_filters.unshift({
+                        title: { en: "Photobooth" },
+                        filter_ids: pbIds
+                    });
+                }
+            }
+            if (Array.isArray(existingFilterCfg.picker_filters)) {
+                for (var pIdx = 0; pIdx < pbIds.length; pIdx++) {
+                    if (existingFilterCfg.picker_filters.indexOf(pbIds[pIdx]) === -1) {
+                        existingFilterCfg.picker_filters.push(pbIds[pIdx]);
+                    }
+                }
+            }
+            obj.entries.camera_filter_config = JSON.stringify(existingFilterCfg);
+        }
+    } catch (e) {}
+    try {
+        var existingOverlays = JSON.parse(obj.entries.overlay_items || "[]");
+        if (Array.isArray(existingOverlays)) {
+            var aiSection = {"section":"✨ Filter AI & Photobooth (Gửi để biến hình)","items":[{"overlay_id":"caption:ai_filter_flower_crown","source":"remote","caption":{"background":{"colors":["#7C3AED","#A855F7","#EC4899"]},"icon":{"data":"🌸","type":"emoji"},"max_lines":1,"text":"AI · Vòng hoa","text_color":"#FFFFFF","type":"static_content"}},{"overlay_id":"caption:ai_filter_cutesy","source":"remote","caption":{"background":{"colors":["#DB2777","#EC4899","#F472B6"]},"icon":{"data":"🎀","type":"emoji"},"max_lines":1,"text":"AI · Dễ thương","text_color":"#FFFFFF","type":"static_content"}},{"overlay_id":"caption:ai_filter_photobooth","source":"remote","caption":{"background":{"colors":["#0F172A","#334155","#475569"]},"icon":{"data":"📸","type":"emoji"},"max_lines":1,"text":"AI · Photobooth","text_color":"#FFFFFF","type":"static_content"}},{"overlay_id":"caption:ai_filter_princess","source":"remote","caption":{"background":{"colors":["#B45309","#D97706","#F59E0B"]},"icon":{"data":"👑","type":"emoji"},"max_lines":1,"text":"AI · Công chúa","text_color":"#FFFFFF","type":"static_content"}},{"overlay_id":"caption:ai_filter_blonde_bleached","source":"remote","caption":{"background":{"colors":["#A16207","#CA8A04","#EAB308"]},"icon":{"data":"💛","type":"emoji"},"max_lines":1,"text":"AI · Tóc vàng","text_color":"#FFFFFF","type":"static_content"}},{"overlay_id":"caption:ai_filter_golden_hour","source":"remote","caption":{"background":{"colors":["#C2410C","#EA580C","#FB923C"]},"icon":{"data":"🌅","type":"emoji"},"max_lines":1,"text":"AI · Nắng chiều","text_color":"#FFFFFF","type":"static_content"}},{"overlay_id":"caption:ai_filter_disco_lights","source":"remote","caption":{"background":{"colors":["#4338CA","#6366F1","#A855F7"]},"icon":{"data":"🪩","type":"emoji"},"max_lines":1,"text":"AI · Disco Neon","text_color":"#FFFFFF","type":"static_content"}},{"overlay_id":"caption:ai_filter_wedding","source":"remote","caption":{"background":{"colors":["#0E7490","#0891B2","#06B6D4"]},"icon":{"data":"💍","type":"emoji"},"max_lines":1,"text":"AI · Cô dâu","text_color":"#FFFFFF","type":"static_content"}},{"overlay_id":"caption:ai_filter_watercolor_art","source":"remote","caption":{"background":{"colors":["#047857","#059669","#10B981"]},"icon":{"data":"🎨","type":"emoji"},"max_lines":1,"text":"AI · Tranh màu nước","text_color":"#FFFFFF","type":"static_content"}},{"overlay_id":"caption:ai_filter_harry_potter","source":"remote","caption":{"background":{"colors":["#312E81","#4338CA","#6D28D9"]},"icon":{"data":"🪄","type":"emoji"},"max_lines":1,"text":"AI · Phù thủy","text_color":"#FFFFFF","type":"static_content"}}]};
+            obj.entries.overlay_items = JSON.stringify([aiSection].concat(existingOverlays));
+        }
+    } catch (e) {}
     Object.assign(obj.entries, {
         ai_filters_enabled: "true",
         custom_filters_enabled: "true",
@@ -5513,3 +5556,5 @@ if (typeof obj === "object" && obj && obj.entries && ua.includes("Locket")) {
     });
 }
 $done({ body: JSON.stringify(obj) });
+}
+_runForceGold();

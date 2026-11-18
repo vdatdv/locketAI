@@ -20,7 +20,7 @@ export default function App() {
   const [gitRawBaseUrl, setGitRawBaseUrl] = useState<string>(
     'https://raw.githubusercontent.com/vdatdv/locketAI/main/github-raw/scripts'
   );
-  const [hostMode, setHostMode] = useState<'git-direct' | 'git-backend' | 'self-hosted'>('git-direct');
+  const [hostMode, setHostMode] = useState<'git-direct' | 'git-backend' | 'self-hosted'>('git-backend');
 
   function handleDownloadConf() {
     const conf = generateMergedLocketConf(normalizeServerUrl(serverUrl), proxyClient, {
@@ -34,7 +34,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = hostMode === 'git-direct' ? 'Locket_Direct_GitRaw.conf' : 'Locket_AI_Free.conf';
+    link.download = hostMode === 'git-direct' ? 'Locket_Direct_GitRaw.conf' : 'Locket_Backend_GitRaw.conf';
     document.body.appendChild(link);
     link.click();
     link.remove();

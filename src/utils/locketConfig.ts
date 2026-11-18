@@ -31,7 +31,141 @@ export const DEFAULT_SHADOWROCKET_AI_PATTERN =
   '^https:\\/\\/(?!.*(getFilters|get[A-Z]|fetch[A-Z]|list[A-Z]|set[A-Z]|update[A-Z]|delete[A-Z]|postMoment|rollcall|account|login|streak|reaction|chat|message|friend|telemetry|analytics|log))((api\\.locketcamera\\.com|[^/]*cloudfunctions\\.net)\\/.*([Gg]enerate[Ff]iltered[Ii]mage|[Cc]reate[Ff]iltered[Ii]mage|[Aa]pply[Ff]ilter|[Gg]enerate[Ff]ilter|[Cc]reate[Ff]ilter|[Cc]ustom[Ff]ilter|[Pp]rocess[Ff]ilter|[Rr]ender[Ff]ilter|[Cc]amera[Ff]ilter|[Mm]agic[Ff]ilter|[Aa][Ii][Ff]ilter|[Ff]ilter[Aa][Ii]|[Gg]enerate[Aa][Ii]|[Gg]enerate[Mm]agic|[Gg]enerate[Pp]hotobooth|[Pp]hotobooth|[Gg]enerate[Ii]mage|[Gg]enerate[Pp]hoto|[Aa][Ii][Gg]enerate|filters?\\/(apply|generate|create|process|render)|ai\\/(generate|image|filter|remix|transform)|[Tt]ransform[Ii]mage|[Rr]estyle|[Pp]hoto[Ee]ffect|[Aa]pply[Ee]ffect).*|[^/]*([Gg]enerate[Ff]iltered[Ii]mage|[Cc]reate[Ff]iltered[Ii]mage|[Aa]pply[Ff]ilter|[Gg]enerate[Ff]ilter|[Cc]reate[Ff]ilter|[Gg]enerate[Pp]hotobooth|[Pp]hotobooth|[Gg]enerate[Aa][Ii])[^/]*\\.a\\.run\\.app(\\/.*)?)';
 
 export const LOCKET_FILTER_UNLOCK_PATTERN =
-  '^https:\\/\\/api\\.locketcamera\\.com\\/(?!.*([Gg]enerate[Ff]iltered[Ii]mage|[Cc]reate[Ff]iltered[Ii]mage|[Gg]enerate[Ff]ilter|[Aa]pply[Ff]ilter|[Cc]reate[Ff]ilter|[Cc]ustom[Ff]ilter|[Pp]rocess[Ff]ilter|[Rr]ender[Ff]ilter|[Gg]enerate[Pp]hotobooth|[Pp]hotobooth|[Gg]enerate[Aa][Ii]|[Gg]enerate[Mm]agic)).*';
+  '^https:\\/\\/(api\\.locketcamera\\.com|[^/]*cloudfunctions\\.net)\\/(?!.*([Gg]enerate[Ff]iltered[Ii]mage|[Cc]reate[Ff]iltered[Ii]mage|[Gg]enerate[Ff]ilter|[Aa]pply[Ff]ilter|[Cc]reate[Ff]ilter|[Cc]ustom[Ff]ilter|[Pp]rocess[Ff]ilter|[Rr]ender[Ff]ilter|[Gg]enerate[Pp]hotobooth|[Pp]hotobooth|[Gg]enerate[Aa][Ii]|[Gg]enerate[Mm]agic|postMoment|createMoment|sendMoment)).*';
+
+export const LOCKET_MOMENT_AI_PATTERN =
+  '^https:\\/\\/api\\.locketcamera\\.com\\/.*(postMoment|createMoment|sendMoment).*';
+
+export interface LocketAiCaptionOverrideItem {
+  filterId: string;
+  label: string;
+  emoji: string;
+  colors: [string, string, string];
+}
+
+export const LOCKET_AI_CAPTION_ITEMS: LocketAiCaptionOverrideItem[] = [
+  { filterId: 'flower_crown', label: 'AI · Vòng hoa', emoji: '🌸', colors: ['#7C3AED', '#A855F7', '#EC4899'] },
+  { filterId: 'cutesy', label: 'AI · Dễ thương', emoji: '🎀', colors: ['#DB2777', '#EC4899', '#F472B6'] },
+  { filterId: 'photobooth', label: 'AI · Photobooth', emoji: '📸', colors: ['#0F172A', '#334155', '#475569'] },
+  { filterId: 'princess', label: 'AI · Công chúa', emoji: '👑', colors: ['#B45309', '#D97706', '#F59E0B'] },
+  { filterId: 'blonde_bleached', label: 'AI · Tóc vàng', emoji: '💛', colors: ['#A16207', '#CA8A04', '#EAB308'] },
+  { filterId: 'golden_hour', label: 'AI · Nắng chiều', emoji: '🌅', colors: ['#C2410C', '#EA580C', '#FB923C'] },
+  { filterId: 'disco_lights', label: 'AI · Disco Neon', emoji: '🪩', colors: ['#4338CA', '#6366F1', '#A855F7'] },
+  { filterId: 'wedding', label: 'AI · Cô dâu', emoji: '💍', colors: ['#0E7490', '#0891B2', '#06B6D4'] },
+  { filterId: 'watercolor_art', label: 'AI · Tranh màu nước', emoji: '🎨', colors: ['#047857', '#059669', '#10B981'] },
+  { filterId: 'harry_potter', label: 'AI · Phù thủy', emoji: '🪄', colors: ['#312E81', '#4338CA', '#6D28D9'] },
+];
+
+export function patchForceGoldScript(rawSource: string): string {
+  const aiOverlaySection = {
+    section: '✨ Filter AI & Photobooth (Gửi để biến hình)',
+    items: LOCKET_AI_CAPTION_ITEMS.map((item) => ({
+      overlay_id: `caption:ai_filter_${item.filterId}`,
+      source: 'remote',
+      caption: {
+        background: { colors: item.colors },
+        icon: { data: item.emoji, type: 'emoji' },
+        max_lines: 1,
+        text: item.label,
+        text_color: '#FFFFFF',
+        type: 'static_content',
+      },
+    })),
+  };
+
+  const safeBodyGuard = `
+var ua = ($request && $request.headers && ($request.headers["User-Agent"] || $request.headers["user-agent"])) || "";
+var rcUrl = ($request && $request.url) || "";
+if (typeof $response === "undefined" || !$response || !$response.body) { $done({}); return; }
+var obj = null;
+try { obj = JSON.parse($response.body); } catch (e) { $done({}); return; }
+if (!obj || typeof obj !== "object") { $done({}); return; }`;
+
+  const replacedHeader = rawSource
+    .replace(
+      /var ua = \$request\.headers\["User-Agent"\][^\n]*\nvar obj = JSON\.parse\(\$response\.body\);\s*\n\s*if \(ua\.includes\("Locket"\)\)/,
+      `function _runForceGold() {${safeBodyGuard}\nif (ua.includes("Locket") || rcUrl.includes("locket-4252a"))`
+    );
+
+  const aiFilterPatch = `
+if (typeof obj === "object" && obj && obj.entries && (ua.includes("Locket") || rcUrl.includes("locket-4252a"))) {
+    try {
+        var fg = JSON.parse(obj.entries.feature_gates || "{}");
+        fg.camera_filters = "enabled";
+        fg.ai_filters = "enabled";
+        fg.custom_filters = "enabled";
+        fg.filters = "enabled";
+        fg.photobooth = "enabled";
+        obj.entries.feature_gates = JSON.stringify(fg);
+    } catch (e) {}
+    try {
+        var uf = JSON.parse(obj.entries.upsell_features || "{}");
+        uf.camera_filters = true;
+        uf.ai_filters = true;
+        uf.custom_filters = true;
+        uf.filters = true;
+        uf.photobooth = true;
+        obj.entries.upsell_features = JSON.stringify(uf);
+    } catch (e) {}
+    try {
+        var existingFilterCfg = JSON.parse(obj.entries.camera_filter_config || "{}");
+        if (existingFilterCfg && typeof existingFilterCfg === "object") {
+            existingFilterCfg.allows_custom_filters = true;
+            existingFilterCfg.show_filter_button = true;
+            existingFilterCfg.sheet_enabled = true;
+            existingFilterCfg.open_sheet_immediately = true;
+            existingFilterCfg.filters_enabled = true;
+            existingFilterCfg.ai_filters_enabled = true;
+            existingFilterCfg.photobooth_enabled = true;
+            var pbIds = ["photobooth", "photobooth_cute", "pb_strawberry", "pb_vintage", "pb_galaxy", "pb_holo_4cut"];
+            if (Array.isArray(existingFilterCfg.sheet_filters)) {
+                var hasPbSection = existingFilterCfg.sheet_filters.some(function (s) {
+                    return s && s.title && (s.title.en === "Photobooth" || s.title === "Photobooth");
+                });
+                if (!hasPbSection) {
+                    existingFilterCfg.sheet_filters.unshift({
+                        title: { en: "Photobooth" },
+                        filter_ids: pbIds
+                    });
+                }
+            }
+            if (Array.isArray(existingFilterCfg.picker_filters)) {
+                for (var pIdx = 0; pIdx < pbIds.length; pIdx++) {
+                    if (existingFilterCfg.picker_filters.indexOf(pbIds[pIdx]) === -1) {
+                        existingFilterCfg.picker_filters.push(pbIds[pIdx]);
+                    }
+                }
+            }
+            obj.entries.camera_filter_config = JSON.stringify(existingFilterCfg);
+        }
+    } catch (e) {}
+    try {
+        var existingOverlays = JSON.parse(obj.entries.overlay_items || "[]");
+        if (Array.isArray(existingOverlays)) {
+            var aiSection = ${JSON.stringify(aiOverlaySection)};
+            obj.entries.overlay_items = JSON.stringify([aiSection].concat(existingOverlays));
+        }
+    } catch (e) {}
+    Object.assign(obj.entries, {
+        ai_filters_enabled: "true",
+        custom_filters_enabled: "true",
+        filter_generation_enabled: "true",
+        ai_camera_filters_enabled: "true",
+        camera_filters_enabled: "true",
+        photobooth_enabled: "true",
+        unlimited_filters: "true",
+        camera_filters_free_tier_enabled: "true"
+    });
+}
+$done({ body: JSON.stringify(obj) });
+}
+_runForceGold();`;
+
+  return replacedHeader.replace(
+    /\$done\(\{\s*body:\s*JSON\.stringify\(obj\)\s*\}\);?\s*$/,
+    aiFilterPatch
+  );
+}
 
 export const LOCKET_FILTERS: LocketFilterPreset[] = [
   {
@@ -918,6 +1052,83 @@ export function generateFilterUnlockScript(): string {
   };
 
   transformNode(obj);
+
+  if (/getfilters/i.test(reqUrl)) {
+    const NATIVE_FILTER_CATALOG = [
+      { id: "flower_crown", name: "Flower Crown", category: "Cute" },
+      { id: "cutesy", name: "Cutesy", category: "Cute" },
+      { id: "sticker_face", name: "Sticker Face", category: "Cute" },
+      { id: "love_bug", name: "Love Bug", category: "Cute" },
+      { id: "princess", name: "Princess", category: "Celebrate" },
+      { id: "disco_lights", name: "Disco Lights", category: "Celebrate" },
+      { id: "cash_money", name: "Cash Money", category: "Celebrate" },
+      { id: "happy_birthday", name: "Happy Birthday", category: "Celebrate" },
+      { id: "blonde_bleached", name: "Blonde Bleached", category: "Looks" },
+      { id: "bob_cut", name: "Bob Cut", category: "Looks" },
+      { id: "buns", name: "Space Buns", category: "Looks" },
+      { id: "tatted", name: "Tatted", category: "Looks" },
+      { id: "mohawk", name: "Mohawk", category: "Looks" },
+      { id: "okay_wig", name: "Okay Wig", category: "Goofy" },
+      { id: "influencer", name: "Influencer", category: "Goofy" },
+      { id: "looks_maxxing", name: "Looks Maxxing", category: "Goofy" },
+      { id: "wedding", name: "Wedding", category: "Costumes" },
+      { id: "cowboy_cowgirl", name: "Cowboy", category: "Costumes" },
+      { id: "clown", name: "Clown", category: "Costumes" },
+      { id: "photobooth", name: "Photobooth 4-Cut", category: "Photobooth" },
+      { id: "photobooth_cute", name: "Photobooth Cute", category: "Photobooth" },
+      { id: "pb_strawberry", name: "Strawberry Strip", category: "Photobooth" },
+      { id: "pb_vintage", name: "Vintage Y2K", category: "Photobooth" },
+      { id: "pb_galaxy", name: "Galaxy 4-Cut", category: "Photobooth" },
+      { id: "pb_holo_4cut", name: "Holo 4-Cut", category: "Photobooth" },
+      { id: "golden_hour", name: "Golden Hour", category: "Artistic" },
+      { id: "watercolor_art", name: "Watercolor Art", category: "Artistic" },
+      { id: "harry_potter", name: "Wizard", category: "Costumes" }
+    ].map(function (item, idx) {
+      return {
+        id: item.id,
+        filter_id: item.id,
+        slug: item.id,
+        name: item.name,
+        display_name: item.name,
+        category: item.category,
+        type: "ai",
+        is_locked: false,
+        requires_gold: false,
+        is_gold_only: false,
+        unlocked: true,
+        is_unlocked: true,
+        is_free: true,
+        can_use: true,
+        enabled: true,
+        sort_order: idx + 1
+      };
+    });
+
+    const populateFiltersContainer = (container) => {
+      if (!container || typeof container !== "object") return;
+      if (!Array.isArray(container.filters) || container.filters.length === 0) {
+        container.filters = NATIVE_FILTER_CATALOG;
+      }
+      if (!Array.isArray(container.friend_filters)) {
+        container.friend_filters = [];
+      }
+      container.can_use_filters = true;
+      container.can_generate_filtered_image = true;
+      container.can_use_photobooth = true;
+      container.filters_enabled = true;
+    };
+
+    if (obj.result && obj.result.data && typeof obj.result.data === "object") {
+      populateFiltersContainer(obj.result.data);
+    } else if (obj.data && typeof obj.data === "object") {
+      populateFiltersContainer(obj.data);
+    } else if (obj.result && typeof obj.result === "object") {
+      populateFiltersContainer(obj.result);
+    } else {
+      populateFiltersContainer(obj);
+    }
+  }
+
   const finalBody = JSON.stringify(obj);
 
   if (upgradedStatus) {
@@ -1087,6 +1298,97 @@ const TARGET_HOST = "${serverHost}";
   } catch (e) {
     $done({});
   }
+})();
+`;
+}
+
+export function generateMomentAiFilterScript(serverUrl: string, client: ProxyClient): string {
+  const cleanUrl = normalizeServerUrl(serverUrl) || 'https://your-free-locket-ai.onrender.com';
+  return `// ============================================================
+// Locket Caption AI Filter Override (${client.toUpperCase()})
+// Can thiệp trực tiếp khi gửi ảnh (postMomentV2):
+// Nếu chọn caption "AI · ..." (caption:ai_filter_*) hoặc gõ "#ai <mô tả>",
+// ảnh selfie sẽ tự động biến hình Img2Img trước khi đăng lên Locket!
+// Nếu gửi ảnh bình thường -> cho qua ngay lập tức (<1ms).
+// ============================================================
+
+const MOMENT_AI_ENDPOINT = "${cleanUrl}/api/locket/moment-ai-filter";
+
+(function () {
+  if (typeof $response !== "undefined" || typeof $request === "undefined" || !$request || !$request.body) {
+    $done({});
+    return;
+  }
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse($request.body);
+  } catch (e) {
+    $done({});
+    return;
+  }
+  if (!parsed || typeof parsed !== "object") {
+    $done({});
+    return;
+  }
+
+  const inner = (parsed.data && typeof parsed.data === "object") ? parsed.data : parsed;
+  const captionStr = String(inner.caption || "").trim();
+  const overlays = Array.isArray(inner.overlays) ? inner.overlays : [];
+  const hasAiOverlay = overlays.some(function (ov) {
+    const id = String((ov && (ov.overlay_id || ov.id)) || "");
+    return id.indexOf("caption:ai_filter_") === 0;
+  });
+  const hasAiTag = /^#ai\\b|^\\/ai\\b|^ai:/i.test(captionStr);
+
+  if (!hasAiOverlay && !hasAiTag) {
+    $done({});
+    return;
+  }
+
+  if (typeof $httpClient === "undefined") {
+    $done({});
+    return;
+  }
+
+  const origHeaders = $request.headers || {};
+  const fwdHeaders = {};
+  for (const k of Object.keys(origHeaders)) {
+    const low = k.toLowerCase();
+    if (low === "authorization" || low === "x-firebase-appcheck" || low === "user-agent") {
+      fwdHeaders[k] = origHeaders[k];
+    }
+  }
+
+  $httpClient.post(
+    {
+      url: MOMENT_AI_ENDPOINT,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Locket-Proxy": "${client}"
+      },
+      body: JSON.stringify({
+        originalUrl: String($request.url || ""),
+        headers: fwdHeaders,
+        payload: parsed
+      }),
+      timeout: 55
+    },
+    function (err, resp, data) {
+      if (err || !data) {
+        $done({});
+        return;
+      }
+      try {
+        const resObj = JSON.parse(data);
+        if (resObj && resObj.ok && resObj.payload) {
+          $done({ body: JSON.stringify(resObj.payload) });
+          return;
+        }
+      } catch (e) {}
+      $done({});
+    }
+  );
 })();
 `;
 }
@@ -1360,11 +1662,17 @@ export function generateTrafficProbeScript(serverUrl: string): string {
 const PROBE_URL = "${cleanUrl}/api/locket/mitm-probe";
 const targetUrl = $request.url || "";
 const ua = $request.headers["User-Agent"] || $request.headers["user-agent"] || "";
+const isTrackedHost =
+  targetUrl.includes("locket") ||
+  targetUrl.includes("firebaseremoteconfig.googleapis.com") ||
+  targetUrl.includes("firestore.googleapis.com") ||
+  targetUrl.includes("firebasestorage.googleapis.com");
 
 if (
+  targetUrl.includes("/api/locket/") ||
   targetUrl.includes("analytics.locketcamera.com") ||
   targetUrl.includes("cdn.locketcamera.com") ||
-  (!ua.includes("Locket") && !targetUrl.includes("locket"))
+  (!ua.includes("Locket") && !isTrackedHost)
 ) {
   $done({});
 } else {
@@ -1407,36 +1715,40 @@ export function generateResponseProbeScript(serverUrl: string): string {
 
 const PROBE_URL = "${cleanUrl}/api/locket/mitm-probe";
 const targetUrl = $request.url || "";
-const status = ($response && ($response.status || $response.statusCode)) || 0;
-const raw = ($response && $response.body) || "";
+if (targetUrl.includes("/api/locket/")) {
+  $done({});
+} else {
+  const status = ($response && ($response.status || $response.statusCode)) || 0;
+  const raw = ($response && $response.body) || "";
 
-let keys = [];
-try {
-  const parsed = raw ? JSON.parse(raw) : {};
-  const inner = parsed && parsed.result ? parsed.result : parsed;
-  if (inner && typeof inner === "object") {
-    keys = Object.keys(inner).slice(0, 12);
-  }
-} catch (e) {}
+  let keys = [];
+  try {
+    const parsed = raw ? JSON.parse(raw) : {};
+    const inner = parsed && parsed.result ? parsed.result : parsed;
+    if (inner && typeof inner === "object") {
+      keys = Object.keys(inner).slice(0, 12);
+    }
+  } catch (e) {}
 
-$httpClient.post(
-  {
-    url: PROBE_URL,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      kind: "res",
-      status: status,
-      method: "RES",
-      url: targetUrl,
-      keys: keys,
-      bodyPreview: String(raw).slice(0, 380)
-    }),
-    timeout: 2
-  },
-  function () {
-    $done({});
-  }
-);
+  $httpClient.post(
+    {
+      url: PROBE_URL,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: "res",
+        status: status,
+        method: "RES",
+        url: targetUrl,
+        keys: keys,
+        bodyPreview: String(raw).slice(0, 700)
+      }),
+      timeout: 2
+    },
+    function () {
+      $done({});
+    }
+  );
+}
 `;
 }
 
@@ -1476,6 +1788,10 @@ export function generateMergedLocketConf(
         ? `${scriptOrigin}/locket_ai_redirect.js`
         : `${cleanServer}/scripts/locket_ai_redirect.js?client=${client}`);
 
+  const momentAiSrc = rawBase
+    ? `${scriptOrigin}/locket_ai_moment.js`
+    : `${cleanServer}/scripts/locket_ai_moment.js?client=${client}`;
+
   const filterUnlockSrc = `${scriptOrigin}/locket_filter_unlock.js`;
   const locketFixSrc = `${scriptOrigin}/locketfix8.js`;
   const locketHeaderSrc = `${scriptOrigin}/header7.js`;
@@ -1491,6 +1807,7 @@ export function generateMergedLocketConf(
       rewriteLines.push(
         `^https:\\/\\/api\\.revenuecat\\.com\\/.+\\/(receipts$|subscribers\\/[^/]+$) url script-response-body ${locketFixSrc}`,
         `^https:\\/\\/api\\.revenuecat\\.com\\/.+\\/(receipts|subscribers) url script-request-header ${locketHeaderSrc}`,
+        `^https:\\/\\/firebaseremoteconfig\\.googleapis\\.com\\/v1\\/projects\\/locket-4252a\\/.+ url script-request-header ${filterUnlockSrc}`,
         `^https:\\/\\/firebaseremoteconfig\\.googleapis\\.com\\/v1\\/projects\\/locket-4252a\\/.+ url script-response-body ${forceGoldSrc}`,
         `${LOCKET_FILTER_UNLOCK_PATTERN} url script-request-header ${filterUnlockSrc}`,
         `${LOCKET_FILTER_UNLOCK_PATTERN} url script-response-body ${filterUnlockSrc}`
@@ -1512,15 +1829,16 @@ hostname = api.revenuecat.com, firebaseremoteconfig.googleapis.com, -analytics.l
     scriptLines.push(
       `revenuecat = type=http-response, pattern=^https:\\/\\/api\\.revenuecat\\.com\\/.+\\/(receipts$|subscribers\\/[^/]+$), script-path=${locketFixSrc}, requires-body=true, max-size=-1, timeout=60`,
       `deleteHeader = type=http-request, pattern=^https:\\/\\/api\\.revenuecat\\.com\\/.+\\/(receipts|subscribers), script-path=${locketHeaderSrc}, timeout=60`,
+      `locket_rc_req = type=http-request, pattern=^https:\\/\\/firebaseremoteconfig\\.googleapis\\.com\\/v1\\/projects\\/locket-4252a\\/.+, script-path=${filterUnlockSrc}, requires-body=false, max-size=-1, timeout=30`,
       `locket_rc = type=http-response, pattern=^https:\\/\\/firebaseremoteconfig\\.googleapis\\.com\\/v1\\/projects\\/locket-4252a\\/.+, script-path=${forceGoldSrc}, requires-body=true, max-size=-1, timeout=60`,
       `locket_filter_unlock_req = type=http-request, pattern=${LOCKET_FILTER_UNLOCK_PATTERN}, script-path=${filterUnlockSrc}, requires-body=false, max-size=-1, timeout=30`,
       `locket_filter_unlock_res = type=http-response, pattern=${LOCKET_FILTER_UNLOCK_PATTERN}, script-path=${filterUnlockSrc}, requires-body=true, max-size=-1, timeout=30`
     );
   }
-  if (options.enableTrafficProbe && !directNoServer) {
+  if (options.enableTrafficProbe) {
     scriptLines.push(
-      `locket_probe = type=http-request, pattern=^https:\\/\\/(?!(analytics|cdn)\\.).*(locketcamera\\.com|cloudfunctions\\.net|a\\.run\\.app)\\/.*, script-path=${cleanServer}/scripts/locket_traffic_probe.js, requires-body=true, max-size=1048576, timeout=5`,
-      `locket_probe_res = type=http-response, pattern=^https:\\/\\/api\\.locketcamera\\.com\\/(getFilters|.*[Ff]ilter.*), script-path=${cleanServer}/scripts/locket_response_probe.js, requires-body=true, max-size=1048576, timeout=5`
+      `locket_probe = type=http-request, pattern=^https:\\/\\/(?!(analytics|cdn)\\.).*(locketcamera\\.com|cloudfunctions\\.net|a\\.run\\.app|firebaseremoteconfig\\.googleapis\\.com|firestore\\.googleapis\\.com|firebasestorage\\.googleapis\\.com)\\/.*, script-path=${cleanServer}/scripts/locket_traffic_probe.js, requires-body=true, max-size=1048576, timeout=5`,
+      `locket_probe_res = type=http-response, pattern=^https:\\/\\/(?!(analytics|cdn)\\.)(?!.*(getMoments|fetchMoments|getGroupMessages))(api\\.locketcamera\\.com|[^/]*cloudfunctions\\.net|[^/]*\\.a\\.run\\.app|firestore\\.googleapis\\.com)\\/.*, script-path=${cleanServer}/scripts/locket_response_probe.js, requires-body=true, max-size=1048576, timeout=5`
     );
   }
   if (directNoServer) {
@@ -1529,7 +1847,8 @@ hostname = api.revenuecat.com, firebaseremoteconfig.googleapis.com, -analytics.l
     );
   } else {
     scriptLines.push(
-      `locket_ai_filter_req = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`
+      `locket_ai_filter_req = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`,
+      `locket_ai_moment_req = type=http-request, pattern=${LOCKET_MOMENT_AI_PATTERN}, script-path=${momentAiSrc}, requires-body=true, max-size=-1, timeout=60`
     );
   }
 
@@ -1543,6 +1862,9 @@ hostname = api.revenuecat.com, firebaseremoteconfig.googleapis.com, -analytics.l
     '*.cloudfunctions.net',
     '*.a.run.app',
   ];
+  if (options.enableTrafficProbe) {
+    mitmHosts.push('firestore.googleapis.com', 'firebasestorage.googleapis.com');
+  }
 
   return `# Locket Gold + In-App Filter AI (${client.toUpperCase()})
 # 100% thuần Locket (${directNoServer ? 'Thuần GitHub Raw · 0 Server' : rawBase ? 'GitHub Raw + Backend Img2Img' : 'Self-Hosted'})

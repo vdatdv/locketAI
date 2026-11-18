@@ -109,7 +109,8 @@ export function DeployGuideView() {
             Gồm sẵn thư mục <code className="font-mono bg-slate-100 px-1 rounded">github-raw/</code> (chứa{' '}
             <code className="font-mono bg-slate-100 px-1 rounded">Locket_Direct_GitRaw.conf</code> bản 0 server,{' '}
             <code className="font-mono bg-slate-100 px-1 rounded">Locket_Backend_GitRaw.conf</code>,{' '}
-            <code className="font-mono bg-slate-100 px-1 rounded">forceGold4.3.js</code> đã vá,{' '}
+            <code className="font-mono bg-slate-100 px-1 rounded">forceGold4.3.js</code> đã vá chèn 10 nút Caption AI,{' '}
+            <code className="font-mono bg-slate-100 px-1 rounded">locket_ai_moment.js</code>,{' '}
             <code className="font-mono bg-slate-100 px-1 rounded">locket_filter_unlock.js</code>,{' '}
             <code className="font-mono bg-slate-100 px-1 rounded">locket_ai_direct.js</code>), file{' '}
             <code className="font-mono bg-slate-100 px-1 rounded">cloudflare-worker/worker.js</code> và mã nguồn Render kèm{' '}

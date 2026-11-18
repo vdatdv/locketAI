@@ -9,16 +9,20 @@ import {
   generateFilterUnlockScript,
   generateMergedLocketConf,
   generateMitmRedirectScript,
+  generateMomentAiFilterScript,
   generateStandaloneServerCode,
+  generateTrafficProbeScript,
   getDimensionsForAspectRatio,
   isValidServerUrl,
   LOCKET_CAPTIONS,
   LOCKET_FILTERS,
   LOCKET_FILTER_UNLOCK_PATTERN,
+  LOCKET_MOMENT_AI_PATTERN,
   mapFilterIdToPrompt,
   normalizeFilterId,
   normalizeGitRawScriptsUrl,
   normalizeServerUrl,
+  patchForceGoldScript,
 } from './locketConfig';
 
 test('getDimensionsForAspectRatio returns expected dimensions', () => {
@@ -121,9 +125,10 @@ test('DEFAULT_SHADOWROCKET_AI_PATTERN matches generateFilteredImage & filter end
   );
 });
 
-test('LOCKET_FILTER_UNLOCK_PATTERN covers api.locketcamera.com except generateFilteredImage', () => {
+test('LOCKET_FILTER_UNLOCK_PATTERN covers api.locketcamera.com and cloudfunctions.net except generateFilteredImage', () => {
   const regex = new RegExp(LOCKET_FILTER_UNLOCK_PATTERN.replace(/\\\//g, '/'));
   assert.equal(regex.test('https://api.locketcamera.com/getFilters'), true);
+  assert.equal(regex.test('https://us-central1-locket-4252a.cloudfunctions.net/getFilters'), true);
   assert.equal(regex.test('https://api.locketcamera.com/fetchUser'), true);
   assert.equal(regex.test('https://api.locketcamera.com/changeProfileInfo'), true);
   assert.equal(regex.test('https://api.locketcamera.com/generateFilteredImage'), false);
@@ -189,6 +194,26 @@ test('generateFilterUnlockScript unlocks user permissions & strips locks with ze
   });
   assert.ok(okRes?.body);
   assert.equal(okRes?.status, undefined);
+
+  let getFiltersRes: { body?: string } | undefined;
+  vm.runInNewContext(script, {
+    $request: { url: 'https://api.locketcamera.com/getFilters', headers: {} },
+    $response: {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ result: { data: { filters: [], friend_filters: [] }, status: 200 } }),
+    },
+    $done: (out: { body?: string }) => {
+      getFiltersRes = out;
+    },
+  });
+  const parsedFilters = JSON.parse(getFiltersRes?.body || '{}');
+  assert.ok(Array.isArray(parsedFilters.result.data.filters));
+  assert.ok(parsedFilters.result.data.filters.length >= 25);
+  assert.ok(parsedFilters.result.data.filters.some((f: { id?: string }) => f.id === 'flower_crown'));
+  assert.ok(parsedFilters.result.data.filters.some((f: { id?: string }) => f.id === 'photobooth'));
+  assert.equal(parsedFilters.result.data.can_use_filters, true);
+  assert.equal(parsedFilters.result.data.can_use_photobooth, true);
 });
 
 test('generateMitmRedirectScript forwards generateFilteredImage via $httpClient.post and returns clean 200 response', () => {
@@ -239,9 +264,11 @@ test('generateMergedLocketConf includes Gold, filter unlock, generateFilteredIma
   assert.ok(conf.includes('locketfix8.js'));
   assert.ok(conf.includes('header7.js'));
   assert.ok(conf.includes('https://free-ai.onrender.com/scripts/forceGold4.3.js'));
+  assert.ok(conf.includes('locket_rc_req = type=http-request'));
   assert.ok(conf.includes('locket_filter_unlock_req = type=http-request'));
   assert.ok(conf.includes('locket_filter_unlock_res = type=http-response'));
   assert.ok(conf.includes('locket_ai_filter_req = type=http-request'));
+  assert.ok(conf.includes('locket_ai_moment_req = type=http-request'));
   assert.ok(conf.includes('locket_probe = type=http-request'));
   assert.ok(conf.includes('locket_probe_res = type=http-response'));
   assert.ok(conf.includes('-analytics.locketcamera.com'));
@@ -320,5 +347,142 @@ test('generateMergedLocketConf supports 100% pure GitHub Raw direct mode and Clo
   assert.ok(workerCode.includes('runImg2ImgHorde'));
   assert.ok(workerCode.includes('outputUrl'));
 });
+
+test('patchForceGoldScript prepends Caption AI Filter section and handles empty 304 bodies safely', () => {
+  const sampleUpstream = [
+    'var ua = $request.headers["User-Agent"] || $request.headers["user-agent"] || "";',
+    'var obj = JSON.parse($response.body);',
+    'if (ua.includes("Locket")) {',
+    '  obj.entries = obj.entries || {};',
+    '}',
+    '$done({ body: JSON.stringify(obj) });',
+  ].join('\n');
+
+  const patched = patchForceGoldScript(sampleUpstream);
+
+  let emptyDone: Record<string, unknown> | undefined;
+  vm.runInNewContext(patched, {
+    $request: { url: 'https://firebaseremoteconfig.googleapis.com/v1/projects/locket-4252a/namespaces/firebase:fetch', headers: {} },
+    $response: { status: 304, body: '' },
+    $done: (out: Record<string, unknown>) => {
+      emptyDone = out;
+    },
+  });
+  assert.equal(JSON.stringify(emptyDone), '{}');
+
+  let rcDone: { body?: string } | undefined;
+  vm.runInNewContext(patched, {
+    $request: { url: 'https://firebaseremoteconfig.googleapis.com/v1/projects/locket-4252a/namespaces/firebase:fetch', headers: { 'User-Agent': 'Firebase-RemoteConfig/11.0' } },
+    $response: {
+      status: 200,
+      body: JSON.stringify({
+        entries: {
+          feature_gates: '{}',
+          upsell_features: '{}',
+          camera_filter_config: JSON.stringify({
+            sheet_filters: [{ title: { en: 'Cute' }, filter_ids: ['flower_crown'] }],
+            picker_filters: ['flower_crown'],
+          }),
+          overlay_items: JSON.stringify([{ section: 'Orig', items: [] }]),
+        },
+      }),
+    },
+    $done: (out: { body?: string }) => {
+      rcDone = out;
+    },
+  });
+  if (!rcDone?.body) assert.fail('Expected patched forceGold output');
+  const rcObj = JSON.parse(rcDone.body);
+  const overlays = JSON.parse(rcObj.entries.overlay_items);
+  assert.equal(overlays.length, 2);
+  assert.ok(overlays[0].section.includes('Filter AI'));
+  assert.ok(overlays[0].items.some((i: { overlay_id?: string }) => i.overlay_id === 'caption:ai_filter_flower_crown'));
+  const filterCfg = JSON.parse(rcObj.entries.camera_filter_config);
+  assert.ok(filterCfg.picker_filters.includes('photobooth'));
+  assert.ok(filterCfg.sheet_filters.some((s: { title?: { en?: string } }) => s.title?.en === 'Photobooth'));
+  assert.equal(rcObj.entries.camera_filters_free_tier_enabled, 'true');
+});
+
+test('generateMomentAiFilterScript passes normal captions through and intercepts AI captions & #ai tags', () => {
+  const regex = new RegExp(LOCKET_MOMENT_AI_PATTERN.replace(/\\\//g, '/'));
+  assert.equal(regex.test('https://api.locketcamera.com/postMomentV2'), true);
+
+  const script = generateMomentAiFilterScript('https://locketai.onrender.com', 'shadowrocket');
+
+  let passthroughDone: Record<string, unknown> | undefined;
+  vm.runInNewContext(script, {
+    $request: {
+      url: 'https://api.locketcamera.com/postMomentV2',
+      headers: {},
+      body: JSON.stringify({ data: { caption: 'Hello friends', thumbnail_url: 'https://cdn/1.jpg', overlays: [] } }),
+    },
+    $done: (out: Record<string, unknown>) => {
+      passthroughDone = out;
+    },
+  });
+  assert.equal(JSON.stringify(passthroughDone), '{}');
+
+  let forwardedUrl = '';
+  let aiDone: { body?: string } | undefined;
+  vm.runInNewContext(script, {
+    $request: {
+      url: 'https://api.locketcamera.com/postMomentV2',
+      headers: { Authorization: 'Bearer tok', 'X-Firebase-AppCheck': 'appchk' },
+      body: JSON.stringify({
+        data: {
+          caption: 'AI · Vòng hoa',
+          thumbnail_url: 'https://firebasestorage.googleapis.com/orig.jpg',
+          overlays: [{ overlay_id: 'caption:ai_filter_flower_crown' }],
+        },
+      }),
+    },
+    $httpClient: {
+      post: (opts: { url: string; body: string }, cb: (err: unknown, resp: unknown, data: string) => void) => {
+        forwardedUrl = opts.url;
+        const sent = JSON.parse(opts.body);
+        sent.payload.data.thumbnail_url = 'https://firebasestorage.googleapis.com/transformed.jpg';
+        cb(null, { status: 200 }, JSON.stringify({ ok: true, payload: sent.payload }));
+      },
+    },
+    $done: (out: { body?: string }) => {
+      aiDone = out;
+    },
+  });
+  assert.equal(forwardedUrl, 'https://locketai.onrender.com/api/locket/moment-ai-filter');
+  if (!aiDone?.body) assert.fail('Expected transformed postMomentV2 payload');
+  const finalPayload = JSON.parse(aiDone.body);
+  assert.equal(finalPayload.data.thumbnail_url, 'https://firebasestorage.googleapis.com/transformed.jpg');
+});
+
+test('generateTrafficProbeScript avoids /api/locket/ loop and tracks firebaseremoteconfig hosts', () => {
+  const probeScript = generateTrafficProbeScript('https://locketai.onrender.com');
+  let selfLoopDone: Record<string, unknown> | undefined;
+  vm.runInNewContext(probeScript, {
+    $request: { url: 'https://locketai.onrender.com/api/locket/mitm-probe', headers: { 'User-Agent': 'Locket/2.0' } },
+    $done: (out: Record<string, unknown>) => {
+      selfLoopDone = out;
+    },
+  });
+  assert.equal(JSON.stringify(selfLoopDone), '{}');
+
+  let probedRemoteConfig = false;
+  vm.runInNewContext(probeScript, {
+    $request: {
+      url: 'https://firebaseremoteconfig.googleapis.com/v1/projects/locket-4252a/namespaces/firebase:fetch',
+      method: 'POST',
+      headers: { 'User-Agent': 'Firebase-RemoteConfig/11.0' },
+      body: '{}',
+    },
+    $httpClient: {
+      post: (_opts: unknown, cb: () => void) => {
+        probedRemoteConfig = true;
+        cb();
+      },
+    },
+    $done: () => {},
+  });
+  assert.equal(probedRemoteConfig, true);
+});
+
 
 
