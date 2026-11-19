@@ -6,6 +6,7 @@
 
 (function () {
   const FILTER_HINTS = {
+    practical_magic_2: "lush deep green vines and subtle roses with understated warm glowing fireflies, dreamy enchanted portrait",
     flower_crown: "wearing a delicate fresh pastel flower crown on head, dreamy soft sunlight glow",
     cutesy: "soft rosy blush cheeks, adorable kawaii aesthetic, dreamy pastel tones, glowing skin",
     sticker_face: "playful cute pastel face stickers on cheeks, sparkling eyes",
@@ -81,8 +82,15 @@
   function respondWithImage(imgUrl, provider, filterId) {
     const dataNode = {
       status: 200,
+      id: filterId || "custom_look",
+      name: filterId || "custom_look",
       outputUrl: imgUrl,
       output_url: imgUrl,
+      filtered_image_url: imgUrl,
+      filteredImageUrl: imgUrl,
+      result_url: imgUrl,
+      thumbnail_url: imgUrl,
+      preview_url: imgUrl,
       url: imgUrl,
       imageUrl: imgUrl,
       image_url: imgUrl
@@ -92,8 +100,15 @@
       status: 200,
       provider: provider,
       filter_id: filterId || undefined,
+      id: filterId || "custom_look",
+      name: filterId || "custom_look",
       outputUrl: imgUrl,
       output_url: imgUrl,
+      filtered_image_url: imgUrl,
+      filteredImageUrl: imgUrl,
+      result_url: imgUrl,
+      thumbnail_url: imgUrl,
+      preview_url: imgUrl,
       url: imgUrl,
       imageUrl: imgUrl,
       image_url: imgUrl,
@@ -114,7 +129,8 @@
 
   function buildPollinationsUrl(prompt) {
     const seed = Math.floor(Math.random() * 1000000);
-    return "https://image.pollinations.ai/prompt/" + encodeURIComponent(prompt) + "?width=768&height=1024&model=flux&seed=" + seed + "&nologo=true";
+    const capped = String(prompt || "").slice(0, 550);
+    return "https://image.pollinations.ai/prompt/" + encodeURIComponent(capped) + "?width=768&height=1024&model=flux&seed=" + seed + "&nologo=true";
   }
 
   try {
@@ -130,15 +146,16 @@
     const merged = Object.assign({}, raw, inner, subPayload, subFilter);
 
     let filterId = String(
-      merged.filter_id || merged.filterId || merged.sticker_id || merged.stickerId ||
-      merged.preset_id || merged.presetId || merged.template_id || merged.effect_id ||
-      merged.filter || merged.id || ""
+      merged.filter_id || merged.filterId || merged.look_id || merged.lookId ||
+      merged.appearance_id || merged.appearanceId || merged.custom_filter_id || merged.customFilterId ||
+      merged.sticker_id || merged.stickerId || merged.preset_id || merged.presetId ||
+      merged.template_id || merged.effect_id || merged.filter || merged.look || merged.id || ""
     ).trim().toLowerCase();
     if (filterId.startsWith("stk_dio_")) filterId = filterId.slice(8);
     else if (filterId.startsWith("stk_")) filterId = filterId.slice(4);
     if (FILTER_ALIASES[filterId]) filterId = FILTER_ALIASES[filterId];
 
-    const userPrompt = String(merged.prompt || merged.custom_prompt || merged.text || merged.description || "").trim();
+    const userPrompt = String(merged.prompt || merged.custom_prompt || merged.user_prompt || merged.look_prompt || merged.text || merged.description || "").trim();
     const hint = FILTER_HINTS[filterId] || (filterId ? filterId.replace(/_/g, " ") + " filter aesthetic" : "aesthetic portrait photography");
     const fullPrompt = [userPrompt, hint, "authentic candid 35mm portrait, natural lighting"].filter(Boolean).join(", ");
 

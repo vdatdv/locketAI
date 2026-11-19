@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ApiLogsView } from './components/ApiLogsView';
 import { DeployGuideView } from './components/DeployGuideView';
+import { FilterStudioView } from './components/FilterStudioView';
 import { MitmConfigView } from './components/MitmConfigView';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
@@ -12,7 +13,7 @@ import {
 } from './utils/locketConfig';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<AppTab>('mitm');
+  const [activeTab, setActiveTab] = useState<AppTab>('filter-studio');
   const [serverUrl, setServerUrl] = useState<string>(() =>
     typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'
   );
@@ -26,6 +27,7 @@ export default function App() {
     const conf = generateMergedLocketConf(normalizeServerUrl(serverUrl), proxyClient, {
       includeGoldUnlock: true,
       usePatchedForceGold: true,
+      enableTrafficProbe: hostMode !== 'git-direct',
       directNoServer: hostMode === 'git-direct',
       scriptBaseUrl: hostMode === 'self-hosted' ? '' : gitRawBaseUrl,
       aiScriptUrl: '',
@@ -49,6 +51,7 @@ export default function App() {
         <TopBar activeTab={activeTab} onDownloadConf={handleDownloadConf} />
 
         <main className="flex-1 p-5 sm:p-6 lg:p-8 max-w-[1280px] w-full mx-auto">
+          {activeTab === 'filter-studio' && <FilterStudioView />}
           {activeTab === 'mitm' && (
             <MitmConfigView
               serverUrl={serverUrl}

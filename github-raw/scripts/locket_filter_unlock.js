@@ -42,7 +42,7 @@
     return;
   }
 
-  if (reqUrl.includes("generateFilteredImage") || reqUrl.includes("createFilteredImage")) {
+  if (/generateFilteredImage|createFilteredImage|generateLook|createLook|applyLook|renderLook|generateAppearance|createAppearance|createUserFilter|createCustomFilter/i.test(reqUrl)) {
     $done({});
     return;
   }
@@ -87,6 +87,14 @@
     target.can_use_gold_features = true;
     target.can_generate_filtered_image = true;
     target.can_create_filtered_image = true;
+    target.can_create_custom_filters = true;
+    target.can_create_looks = true;
+    target.allows_custom_filters = true;
+    target.ai_filters_enabled = true;
+    target.custom_filters_enabled = true;
+    target.filter_generation_enabled = true;
+    target.eligible = true;
+    target.is_eligible = true;
     target.can_use_photobooth = true;
     target.photobooth_access = true;
     target.unlimited_filters = true;
@@ -96,9 +104,12 @@
     target.filter_credits = 999;
     target.filters_remaining = 999;
     target.daily_filter_limit = 999;
+    target.custom_filter_credits = 999;
+    target.custom_filters_remaining = 999;
+    target.looks_remaining = 999;
   };
 
-  const isSingleUserEndpoint = !isFriendsOrFeed && /getUser|fetchUser|getAccount|accountInfo|userProfile|getSubscription|subscription|clientData/i.test(reqUrl);
+  const isSingleUserEndpoint = !isFriendsOrFeed && /getUser|fetchUser|getAccount|accountInfo|userProfile|getSubscription|subscription|clientData|filter|look|credit|eligib|feature|photobooth|entitle/i.test(reqUrl);
   const isSingleUserObject = Boolean(
     !isFriendsOrFeed &&
     (
@@ -112,21 +123,27 @@
   if (isSingleUserObject) {
     applyGoldAndFilterAccess(obj);
     if (obj.data && typeof obj.data === "object") applyGoldAndFilterAccess(obj.data);
-    if (obj.result && typeof obj.result === "object") applyGoldAndFilterAccess(obj.result);
+    if (obj.result && typeof obj.result === "object") {
+      applyGoldAndFilterAccess(obj.result);
+      if (obj.result.data && typeof obj.result.data === "object") applyGoldAndFilterAccess(obj.result.data);
+    }
     if (obj.user && typeof obj.user === "object") applyGoldAndFilterAccess(obj.user);
   }
 
   const falseKeys = [
     "is_locked", "locked", "requires_gold", "require_gold", "gold_only",
     "is_gold_only", "paywall", "show_paywall", "show_upsell", "upsell",
-    "blurred", "is_blurred", "needs_gold"
+    "blurred", "is_blurred", "needs_gold", "limit_reached", "quota_exceeded",
+    "credits_exhausted"
   ];
   const trueKeys = [
     "can_view", "unlocked", "is_unlocked", "is_free", "free",
     "can_use_filter", "allowed", "can_use_filters",
     "can_generate_filtered_image", "can_create_filtered_image",
-    "can_use_photobooth", "photobooth_access", "unlimited_filters",
-    "has_ai_access", "filter_access"
+    "can_create_custom_filters", "can_create_looks", "allows_custom_filters",
+    "ai_filters_enabled", "custom_filters_enabled", "filter_generation_enabled",
+    "eligible", "is_eligible", "can_use_photobooth", "photobooth_access",
+    "unlimited_filters", "has_ai_access", "filter_access"
   ];
 
   const transformNode = (node) => {
@@ -166,6 +183,7 @@
 
   if (/getfilters/i.test(reqUrl)) {
     const NATIVE_FILTER_CATALOG = [
+      { id: "practical_magic_2", name: "Practical Magic 2", category: "Events", icon: "https://storage.googleapis.com/locket-public/camera_filters/icons/pm2_cutout.png" },
       { id: "flower_crown", name: "Flower Crown", category: "Cute" },
       { id: "cutesy", name: "Cutesy", category: "Cute" },
       { id: "sticker_face", name: "Sticker Face", category: "Cute" },
@@ -225,6 +243,12 @@
       }
       container.can_use_filters = true;
       container.can_generate_filtered_image = true;
+      container.can_create_custom_filters = true;
+      container.can_create_looks = true;
+      container.allows_custom_filters = true;
+      container.ai_filters_enabled = true;
+      container.custom_filters_enabled = true;
+      container.filter_generation_enabled = true;
       container.can_use_photobooth = true;
       container.filters_enabled = true;
     };

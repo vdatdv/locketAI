@@ -1,7 +1,11 @@
+import { OFFICIAL_LOCKET_FILTERS, type LocketFilterPreset } from './locketFilterCatalog';
+
 export type ProxyClient = 'shadowrocket' | 'loon' | 'surge' | 'quantumultx';
 export type AspectRatioOption = '1:1' | '3:4' | '9:16';
 export type FreeAiModel = 'flux' | 'turbo' | 'anime';
 export type DeployPlatform = 'worker' | 'render' | 'railway' | 'vercel' | 'termux';
+
+export type { LocketFilterPreset };
 
 export interface LocketCaptionPreset {
   id: string;
@@ -12,13 +16,6 @@ export interface LocketCaptionPreset {
   textColor: string;
 }
 
-export interface LocketFilterPreset {
-  id: string;
-  category: string;
-  label: string;
-  promptInstruction: string;
-}
-
 export interface AiStylePreset {
   id: string;
   label: string;
@@ -26,13 +23,12 @@ export interface AiStylePreset {
   recommendedModel: FreeAiModel;
 }
 
-// Matches Locket in-app AI Filter & Photobooth endpoints (API + Cloud Functions + Cloud Run v2 hostnames) while excluding read/config/analytics/moment/social endpoints
+// Matches Locket in-app AI Filter, Look/Appearance & Photobooth endpoints (API + subdomains + Cloud Functions + Cloud Run v2) while excluding read/config/analytics/cdn/moment endpoints
 export const DEFAULT_SHADOWROCKET_AI_PATTERN =
-  '^https:\\/\\/(?!.*(getFilters|fetchFilters|listFilters|get[A-Z]|fetch[A-Z]|list[A-Z]|set[A-Z]|update[A-Z]|delete[A-Z]|postMoment|rollcall|account|login|streak|reaction|chat|message|friend|telemetry|analytics|logEvent|eventLog))((api\\.locketcamera\\.com|[^/]*cloudfunctions\\.net)\\/.*([Gg]enerate[Ff]iltered[Ii]mage|[Cc]reate[Ff]iltered[Ii]mage|[Aa]pply[Ff]ilter|[Gg]enerate[Ff]ilter|[Cc]reate[Ff]ilter|[Cc]ustom[Ff]ilter|[Pp]rocess[Ff]ilter|[Rr]ender[Ff]ilter|[Cc]amera[Ff]ilter|[Mm]agic[Ff]ilter|[Aa][Ii][Ff]ilter|[Ff]ilter[Aa][Ii]|[Gg]enerate[Aa][Ii]|[Gg]enerate[Mm]agic|[Gg]enerate[Pp]hotobooth|[Pp]hotobooth|[Gg]enerate[Ii]mage|[Gg]enerate[Pp]hoto|[Aa][Ii][Gg]enerate|filters?\\/(apply|generate|create|process|render)|ai\\/(generate|image|filter|remix|transform)|[Tt]ransform[Ii]mage|[Rr]estyle|[Pp]hoto[Ee]ffect|[Aa]pply[Ee]ffect).*|[^/]*([Gg]enerate[Ff]iltered[Ii]mage|[Cc]reate[Ff]iltered[Ii]mage|[Aa]pply[Ff]ilter|[Gg]enerate[Ff]ilter|[Cc]reate[Ff]ilter|[Gg]enerate[Pp]hotobooth|[Pp]hotobooth|[Gg]enerate[Aa][Ii])[^/]*\\.a\\.run\\.app(\\/.*)?)';
+  '^https:\\/\\/(?!.*(cdn\\.locketcamera\\.com|getFilters|getfilters|getlooks|getcustomfilters|getuserfilters|getaccount|fetchuser|getmoments|get[A-Z]|fetch[A-Z]|list[A-Z]|set[A-Z]|update[A-Z]|delete[A-Z]|postMoment|rollcall|account|login|streak|reaction|chat|message|friend|telemetry|analytics|log))(([^/]+\\.locketcamera\\.com|[^/]*cloudfunctions\\.net)\\/.*([Gg]enerate[Ff]iltered[Ii]mage|[Cc]reate[Ff]iltered[Ii]mage|[Aa]pply[Ff]ilter|[Gg]enerate[Ff]ilter|[Cc]reate[Ff]ilter|[Cc]reate[Cc]ustom[Ff]ilter|[Cc]reate[Uu]ser[Ff]ilter|[Cc]ustom[Ff]ilter|[Pp]rocess[Ff]ilter|[Rr]ender[Ff]ilter|[Cc]amera[Ff]ilter|[Mm]agic[Ff]ilter|[Aa][Ii][Ff]ilter|[Ff]ilter[Aa][Ii]|[Gg]enerate[Ff]ilter[Pp]review|[Gg]enerate[Ll]ook|[Cc]reate[Ll]ook|[Aa]pply[Ll]ook|[Rr]ender[Ll]ook|[Gg]enerate[Aa]ppearance|[Cc]reate[Aa]ppearance|[Ee]dit[Ii]mage|[Gg]enerate[Ss]ticker|[Aa]pply[Ss]ticker|[Gg]enerate[Aa]vatar|[Mm]agic|[Gg]enerate[Aa][Ii]|[Gg]enerate[Mm]agic|[Gg]enerate[Pp]hotobooth|[Pp]hotobooth|[Gg]enerate[Ii]mage|[Gg]enerate[Pp]hoto|[Aa][Ii][Gg]enerate|(filters?|looks?)\\/(apply|generate|create|process|render)|ai\\/(generate|image|filter|look|remix|transform)|[Tt]ransform[Ii]mage|[Rr]estyle|[Pp]hoto[Ee]ffect|[Aa]pply[Ee]ffect).*|[^/]*(filter|look|booth|image|photo|ai|magic|avatar|gen)[^/]*\\.a\\.run\\.app(\\/.*)?)';
 
-// STRICT positive allowlist: ONLY intercept filter/entitlement/subscription/config endpoints — NEVER touch fetchUser/getFriends/getMoments/avatars
 export const LOCKET_FILTER_UNLOCK_PATTERN =
-  '^https:\\/\\/(api\\.locketcamera\\.com|[^/]*locket[^/]*\\.cloudfunctions\\.net)\\/(?!.*(fetchUser|getUser|getFriend|fetchFriend|getMoment|fetchMoment|getLatestMoment|getRecipient|getGroup|syncContact|postMoment|createMoment|sendMoment|generateFilteredImage|createFilteredImage|generatePhotobooth|createPhotobooth)).*(getFilters|fetchFilters|listFilters|getCameraFilters|getPhotoboothFilters|filterTemplates|getAccount|accountInfo|getSubscription|subscription|entitlement|featureFlags|clientData|appConfig|userSubscription|checkFilter|filterUsage|changeProfileInfo).*';
+  '^https:\\/\\/(?!.*(cdn\\.locketcamera\\.com|analytics\\.locketcamera\\.com))([^/]+\\.locketcamera\\.com|[^/]*cloudfunctions\\.net)\\/(?!.*([Gg]enerate[Ff]iltered[Ii]mage|[Cc]reate[Ff]iltered[Ii]mage|[Gg]enerate[Ff]ilter|[Aa]pply[Ff]ilter|[Cc]reate[Ff]ilter|[Cc]reate[Cc]ustom[Ff]ilter|[Cc]reate[Uu]ser[Ff]ilter|[Pp]rocess[Ff]ilter|[Rr]ender[Ff]ilter|[Gg]enerate[Ll]ook|[Cc]reate[Ll]ook|[Aa]pply[Ll]ook|[Rr]ender[Ll]ook|[Gg]enerate[Aa]ppearance|[Cc]reate[Aa]ppearance|[Gg]enerate[Pp]hotobooth|[Gg]enerate[Aa][Ii]|[Gg]enerate[Mm]agic|postMoment|createMoment|sendMoment)).*';
 
 export const LOCKET_MOMENT_AI_PATTERN =
   '^https:\\/\\/api\\.locketcamera\\.com\\/.*(postMoment|createMoment|sendMoment).*';
@@ -47,10 +43,7 @@ export interface LocketAiCaptionOverrideItem {
 export const LOCKET_AI_CAPTION_ITEMS: LocketAiCaptionOverrideItem[] = [
   { filterId: 'flower_crown', label: 'AI · Vòng hoa', emoji: '🌸', colors: ['#7C3AED', '#A855F7', '#EC4899'] },
   { filterId: 'cutesy', label: 'AI · Dễ thương', emoji: '🎀', colors: ['#DB2777', '#EC4899', '#F472B6'] },
-  { filterId: 'photobooth', label: 'AI · Photobooth 4-Cut', emoji: '📸', colors: ['#0F172A', '#334155', '#475569'] },
-  { filterId: 'pb_strawberry', label: 'AI · Photobooth Dâu', emoji: '🍓', colors: ['#BE185D', '#EC4899', '#F9A8D4'] },
-  { filterId: 'pb_vintage', label: 'AI · Photobooth Vintage', emoji: '🎞️', colors: ['#78350F', '#B45309', '#F59E0B'] },
-  { filterId: 'pb_holo_4cut', label: 'AI · Photobooth Holo', emoji: '💿', colors: ['#4F46E5', '#7C3AED', '#06B6D4'] },
+  { filterId: 'photobooth', label: 'AI · Photobooth', emoji: '📸', colors: ['#0F172A', '#334155', '#475569'] },
   { filterId: 'princess', label: 'AI · Công chúa', emoji: '👑', colors: ['#B45309', '#D97706', '#F59E0B'] },
   { filterId: 'blonde_bleached', label: 'AI · Tóc vàng', emoji: '💛', colors: ['#A16207', '#CA8A04', '#EAB308'] },
   { filterId: 'golden_hour', label: 'AI · Nắng chiều', emoji: '🌅', colors: ['#C2410C', '#EA580C', '#FB923C'] },
@@ -83,22 +76,7 @@ var rcUrl = ($request && $request.url) || "";
 if (typeof $response === "undefined" || !$response || !$response.body) { $done({}); return; }
 var obj = null;
 try { obj = JSON.parse($response.body); } catch (e) { $done({}); return; }
-if (!obj || typeof obj !== "object") { $done({}); return; }
-var _origEntries = Object.assign({}, obj.entries || {});
-function _safeParseJson(val, fallback) {
-  if (!val || typeof val !== "string") return fallback;
-  try {
-    var parsed = JSON.parse(val);
-    return parsed && typeof parsed === "object" ? parsed : fallback;
-  } catch (e) {
-    return fallback;
-  }
-}
-var _origFG = _safeParseJson(_origEntries.feature_gates, {});
-var _origUF = _safeParseJson(_origEntries.upsell_features, {});
-var _origCam = _safeParseJson(_origEntries.camera, {});
-var _origFilterCfg = _safeParseJson(_origEntries.camera_filter_config, {});
-var _origPhotoboothCfg = _safeParseJson(_origEntries.photobooth_config, {});`;
+if (!obj || typeof obj !== "object") { $done({}); return; }`;
 
   const replacedHeader = rawSource
     .replace(
@@ -109,62 +87,25 @@ var _origPhotoboothCfg = _safeParseJson(_origEntries.photobooth_config, {});`;
   const aiFilterPatch = `
 if (typeof obj === "object" && obj && obj.entries && (ua.includes("Locket") || rcUrl.includes("locket-4252a"))) {
     try {
-        var fg = Object.assign({}, _origFG, _safeParseJson(obj.entries.feature_gates, {}));
+        var fg = JSON.parse(obj.entries.feature_gates || "{}");
         fg.camera_filters = "enabled";
         fg.ai_filters = "enabled";
-        fg.ai_camera_filters = "enabled";
         fg.custom_filters = "enabled";
         fg.filters = "enabled";
         fg.photobooth = "enabled";
-        fg.photobooth_mode = "enabled";
-        fg.photobooth_camera = "enabled";
-        fg.camera_photobooth = "enabled";
-        fg.photobooth_frames = "enabled";
-        fg.camera_modes = "enabled";
-        fg.collage = "enabled";
-        fg.camera_collage = "enabled";
-        fg.multi_shot = "enabled";
         obj.entries.feature_gates = JSON.stringify(fg);
     } catch (e) {}
     try {
-        var uf = Object.assign({}, _origUF, _safeParseJson(obj.entries.upsell_features, {}));
+        var uf = JSON.parse(obj.entries.upsell_features || "{}");
         uf.camera_filters = true;
         uf.ai_filters = true;
-        uf.ai_camera_filters = true;
         uf.custom_filters = true;
         uf.filters = true;
         uf.photobooth = true;
-        uf.photobooth_mode = true;
-        uf.photobooth_camera = true;
-        uf.camera_photobooth = true;
         obj.entries.upsell_features = JSON.stringify(uf);
     } catch (e) {}
     try {
-        var camMerged = Object.assign({}, _origCam, _safeParseJson(obj.entries.camera, {}));
-        camMerged.photobooth = true;
-        camMerged.photobooth_enabled = true;
-        camMerged.camera_filters = true;
-        camMerged.filters_enabled = true;
-        camMerged.show_filter_button = true;
-        camMerged.show_photobooth_button = true;
-        obj.entries.camera = JSON.stringify(camMerged);
-    } catch (e) {}
-    var pbIds = [
-        "photobooth",
-        "photobooth_4cut",
-        "photobooth_cute",
-        "pb_scrapbook_ripped_4cut",
-        "pb_ripped_paper_4cut",
-        "pb_denim_ripped_2x2",
-        "pb_strawberry",
-        "pb_vintage",
-        "pb_galaxy",
-        "pb_holo_4cut",
-        "frame_classic_pb"
-    ];
-    try {
-        var baseFilterCfg = _safeParseJson(obj.entries.camera_filter_config, {});
-        var existingFilterCfg = Object.assign({}, baseFilterCfg, _origFilterCfg);
+        var existingFilterCfg = JSON.parse(obj.entries.camera_filter_config || "{}");
         if (existingFilterCfg && typeof existingFilterCfg === "object") {
             existingFilterCfg.allows_custom_filters = true;
             existingFilterCfg.show_filter_button = true;
@@ -173,49 +114,27 @@ if (typeof obj === "object" && obj && obj.entries && (ua.includes("Locket") || r
             existingFilterCfg.filters_enabled = true;
             existingFilterCfg.ai_filters_enabled = true;
             existingFilterCfg.photobooth_enabled = true;
-            existingFilterCfg.show_photobooth_button = true;
-            existingFilterCfg.photobooth_sheet_enabled = true;
-            var mergedSheet = Array.isArray(_origFilterCfg.sheet_filters) && _origFilterCfg.sheet_filters.length
-                ? _origFilterCfg.sheet_filters.slice()
-                : (Array.isArray(baseFilterCfg.sheet_filters) ? baseFilterCfg.sheet_filters.slice() : []);
-            var hasPbSection = mergedSheet.some(function (s) {
-                return s && s.title && (s.title.en === "Photobooth" || s.title === "Photobooth");
-            });
-            if (!hasPbSection) {
-                mergedSheet.unshift({
-                    title: { en: "Photobooth" },
-                    filter_ids: pbIds
+            var pbIds = ["photobooth", "photobooth_cute", "pb_strawberry", "pb_vintage", "pb_galaxy", "pb_holo_4cut"];
+            if (Array.isArray(existingFilterCfg.sheet_filters)) {
+                var hasPbSection = existingFilterCfg.sheet_filters.some(function (s) {
+                    return s && s.title && (s.title.en === "Photobooth" || s.title === "Photobooth");
                 });
-            }
-            existingFilterCfg.sheet_filters = mergedSheet;
-            var mergedPicker = Array.isArray(_origFilterCfg.picker_filters) && _origFilterCfg.picker_filters.length
-                ? _origFilterCfg.picker_filters.slice()
-                : (Array.isArray(baseFilterCfg.picker_filters) ? baseFilterCfg.picker_filters.slice() : []);
-            for (var pIdx = 0; pIdx < pbIds.length; pIdx++) {
-                if (mergedPicker.indexOf(pbIds[pIdx]) === -1) {
-                    mergedPicker.push(pbIds[pIdx]);
+                if (!hasPbSection) {
+                    existingFilterCfg.sheet_filters.unshift({
+                        title: { en: "Photobooth" },
+                        filter_ids: pbIds
+                    });
                 }
             }
-            existingFilterCfg.picker_filters = mergedPicker;
-            existingFilterCfg.photobooth_filters = Array.isArray(existingFilterCfg.photobooth_filters) && existingFilterCfg.photobooth_filters.length
-                ? existingFilterCfg.photobooth_filters
-                : pbIds;
+            if (Array.isArray(existingFilterCfg.picker_filters)) {
+                for (var pIdx = 0; pIdx < pbIds.length; pIdx++) {
+                    if (existingFilterCfg.picker_filters.indexOf(pbIds[pIdx]) === -1) {
+                        existingFilterCfg.picker_filters.push(pbIds[pIdx]);
+                    }
+                }
+            }
             obj.entries.camera_filter_config = JSON.stringify(existingFilterCfg);
         }
-    } catch (e) {}
-    try {
-        var pbCfg = Object.assign({}, _origPhotoboothCfg, {
-            enabled: true,
-            is_enabled: true,
-            show_button: true,
-            show_in_camera: true,
-            sheet_enabled: true,
-            free_tier_enabled: true,
-            filters: pbIds,
-            layouts: ["1x4", "2x2", "4cut"]
-        });
-        obj.entries.photobooth_config = JSON.stringify(pbCfg);
-        obj.entries.camera_photobooth_config = JSON.stringify(pbCfg);
     } catch (e) {}
     try {
         var existingOverlays = JSON.parse(obj.entries.overlay_items || "[]");
@@ -231,13 +150,6 @@ if (typeof obj === "object" && obj && obj.entries && (ua.includes("Locket") || r
         ai_camera_filters_enabled: "true",
         camera_filters_enabled: "true",
         photobooth_enabled: "true",
-        camera_photobooth_enabled: "true",
-        photobooth_mode_enabled: "true",
-        photobooth_button_enabled: "true",
-        photobooth_free_tier_enabled: "true",
-        photobooth_collage_enabled: "true",
-        photobooth_in_camera_enabled: "true",
-        photobooth_frames_enabled: "true",
         unlimited_filters: "true",
         camera_filters_free_tier_enabled: "true"
     });
@@ -252,328 +164,7 @@ _runForceGold();`;
   );
 }
 
-export const LOCKET_FILTERS: LocketFilterPreset[] = [
-  {
-    id: 'none',
-    category: 'Mặc định',
-    label: 'Không dùng Filter Locket',
-    promptInstruction: '',
-  },
-  // Cute
-  {
-    id: 'flower_crown',
-    category: 'Cute',
-    label: 'Flower Crown (Vòng hoa)',
-    promptInstruction: 'wearing a delicate fresh pastel flower crown on head, dreamy soft sunlight glow',
-  },
-  {
-    id: 'cutesy',
-    category: 'Cute',
-    label: 'Cutesy (Dễ thương)',
-    promptInstruction: 'soft rosy blush cheeks, adorable kawaii aesthetic, dreamy pastel tones, glowing skin',
-  },
-  {
-    id: 'sticker_face',
-    category: 'Cute',
-    label: 'Sticker Face',
-    promptInstruction: 'playful cute pastel face stickers on cheeks, sparkling eyes, bright cheerful portrait',
-  },
-  {
-    id: 'love_bug',
-    category: 'Cute',
-    label: 'Love Bug',
-    promptInstruction: 'cute floating pink hearts around portrait, warm romantic rosy lighting',
-  },
-  // Celebrate
-  {
-    id: 'princess',
-    category: 'Celebrate',
-    label: 'Princess (Công chúa)',
-    promptInstruction: 'wearing a sparkling crystal diamond tiara crown, fairytale royal glow, soft bokeh sparkles',
-  },
-  {
-    id: 'disco_lights',
-    category: 'Celebrate',
-    label: 'Disco Lights',
-    promptInstruction: 'colorful disco ball light reflections across face and background, vibrant party neon aesthetic',
-  },
-  {
-    id: 'cash_money',
-    category: 'Celebrate',
-    label: 'Cash Money',
-    promptInstruction: 'wearing cool dark sunglasses with floating dollar bills around, flashy hip-hop studio lighting',
-  },
-  {
-    id: 'slimed',
-    category: 'Celebrate',
-    label: 'Slimed',
-    promptInstruction: 'playful glossy neon green slime splashes effect, vibrant studio pop art lighting',
-  },
-  {
-    id: 'happy_birthday',
-    category: 'Celebrate',
-    label: 'Happy Birthday',
-    promptInstruction: 'festive birthday party confetti floating, warm celebratory candlelight bokeh',
-  },
-  // Looks
-  {
-    id: 'blonde_bleached',
-    category: 'Looks',
-    label: 'Blonde Bleached (Tóc vàng)',
-    promptInstruction: 'platinum blonde bleached hairstyle transformation, natural realistic hair texture, studio portrait',
-  },
-  {
-    id: 'bob_cut',
-    category: 'Looks',
-    label: 'Bob Cut (Tóc ngắn)',
-    promptInstruction: 'chic sleek chin-length bob haircut transformation, fashionable editorial portrait',
-  },
-  {
-    id: 'buns',
-    category: 'Looks',
-    label: 'Space Buns (Tóc búi)',
-    promptInstruction: 'cute double space buns hairstyle, youthful trendy street style portrait',
-  },
-  {
-    id: 'tatted',
-    category: 'Looks',
-    label: 'Tatted (Hình xăm)',
-    promptInstruction: 'stylish artistic minimalist tattoos, edgy urban fashion portrait',
-  },
-  {
-    id: 'mohawk',
-    category: 'Looks',
-    label: 'Mohawk',
-    promptInstruction: 'bold punk mohawk hairstyle transformation, dramatic rock concert lighting',
-  },
-  {
-    id: 'braces',
-    category: 'Looks',
-    label: 'Braces (Niềng răng)',
-    promptInstruction: 'cute smiling portrait with colorful orthodontic braces, bright cheerful lighting',
-  },
-  {
-    id: 'beard',
-    category: 'Looks',
-    label: 'Beard (Râu quai nón)',
-    promptInstruction: 'well-groomed full stylish beard transformation, natural realistic lighting',
-  },
-  {
-    id: 'bowling_ball',
-    category: 'Looks',
-    label: 'Bowling Ball (Đầu trọc)',
-    promptInstruction: 'smooth shiny bald head transformation, humorous realistic studio portrait',
-  },
-  // Goofy
-  {
-    id: 'okay_wig',
-    category: 'Goofy',
-    label: 'Okay Wig (Tóc giả hài)',
-    promptInstruction: 'wearing an exaggerated funny colorful wig, playful comedic portrait',
-  },
-  {
-    id: 'influencer',
-    category: 'Goofy',
-    label: 'Influencer',
-    promptInstruction: 'glamorous beauty influencer ring-light glow, dramatic glossy makeup look',
-  },
-  {
-    id: 'looks_maxxing',
-    category: 'Goofy',
-    label: 'Looks Maxxing',
-    promptInstruction: 'sharp chiseled jawline gigachad dramatic monochrome cinematic lighting',
-  },
-  {
-    id: 'toothless',
-    category: 'Goofy',
-    label: 'Toothless',
-    promptInstruction: 'hilarious goofy toothless grin expression, candid funny flash photo',
-  },
-  {
-    id: 'bye_brows',
-    category: 'Goofy',
-    label: 'Bye Brows',
-    promptInstruction: 'humorous bleached invisible eyebrows editorial avant-garde fashion look',
-  },
-  // Costumes
-  {
-    id: 'wedding',
-    category: 'Costumes',
-    label: 'Wedding (Cô dâu / Chú rể)',
-    promptInstruction: 'dressed in elegant white wedding attire with floral bouquet, soft romantic daylight',
-  },
-  {
-    id: 'cowboy_cowgirl',
-    category: 'Costumes',
-    label: 'Cowboy / Cowgirl',
-    promptInstruction: 'wearing a classic leather cowboy hat and western denim jacket, golden sunset glow',
-  },
-  {
-    id: 'giraffe',
-    category: 'Costumes',
-    label: 'Giraffe',
-    promptInstruction: 'wearing a cute cozy plush giraffe hood costume, playful warm lighting',
-  },
-  {
-    id: 'clown',
-    category: 'Costumes',
-    label: 'Clown',
-    promptInstruction: 'colorful artistic circus clown face paint and red nose, vibrant carnival lighting',
-  },
-  // Holidays & Seasonal
-  {
-    id: 'santa_cutout',
-    category: 'Holidays',
-    label: 'Santa Cutout (Noel)',
-    promptInstruction: 'dressed up as Santa Claus with cozy red Santa hat and white fur trim, preserving exact pose and background, warm holiday lights',
-  },
-  {
-    id: 'elf_cutout',
-    category: 'Holidays',
-    label: 'Elf Cutout',
-    promptInstruction: 'dressed up as a festive Christmas Elf with green hat and pointed ears, preserving exact pose and background',
-  },
-  {
-    id: 'sweet_hearts',
-    category: 'Holidays',
-    label: 'Sweet Hearts (Valentine)',
-    promptInstruction: 'romantic Valentine pastel pink heart confetti atmosphere, dreamy warm portrait',
-  },
-  {
-    id: 'easter_bunney_cutout',
-    category: 'Holidays',
-    label: 'Easter Bunny',
-    promptInstruction: 'wearing a cute pastel Easter bunny ear headband and spring aesthetic, preserving exact pose and background',
-  },
-  {
-    id: 'easter_chick_cutout',
-    category: 'Holidays',
-    label: 'Easter Chick',
-    promptInstruction: 'wearing a bright yellow fluffy Easter chick costume, preserving exact pose and background',
-  },
-  {
-    id: 'leprechaun',
-    category: 'Holidays',
-    label: 'Leprechaun',
-    promptInstruction: 'wearing a green top hat with shamrock and festive leprechaun costume, preserving exact pose and background',
-  },
-  {
-    id: 'lucky_face',
-    category: 'Holidays',
-    label: 'Lucky Face (Tàn nhang)',
-    promptInstruction: 'cute subtle freckles across the bridge of the nose and cheeks, warm golden glow, preserving exact pose and background',
-  },
-  {
-    id: 'frosty',
-    category: 'Holidays',
-    label: 'Frosty (Băng giá)',
-    promptInstruction: 'cozy winter snow and icy frosted sparkle atmosphere around the portrait, preserving exact pose',
-  },
-  // Photobooth 4-Cut & Frames
-  {
-    id: 'photobooth',
-    category: 'Photobooth',
-    label: 'Korean Photobooth 4-Cut',
-    promptInstruction: 'captured with a Korean photobooth 4-cut aesthetic, vintage soft lighting, clear facial features, modern iPhone camera look',
-  },
-  {
-    id: 'photobooth_cute',
-    category: 'Photobooth',
-    label: 'Photobooth Cute Pastel',
-    promptInstruction: 'captured with a cute pastel photobooth aesthetic, soft dreamy lighting, clear facial features',
-  },
-  {
-    id: 'pb_strawberry',
-    category: 'Photobooth',
-    label: 'Photobooth Strawberry',
-    promptInstruction: 'captured with a cute pastel strawberry photobooth aesthetic, soft rosy lighting, modern iPhone camera look',
-  },
-  {
-    id: 'pb_vintage',
-    category: 'Photobooth',
-    label: 'Photobooth Vintage 90s',
-    promptInstruction: 'captured with vintage 90s film photobooth aesthetic, warm nostalgic grain and soft flash lighting',
-  },
-  {
-    id: 'pb_galaxy',
-    category: 'Photobooth',
-    label: 'Photobooth Galaxy',
-    promptInstruction: 'captured with dreamy galaxy stars ambient glow aesthetic, soft cosmic studio lighting',
-  },
-  {
-    id: 'pb_holo_4cut',
-    category: 'Photobooth',
-    label: 'Photobooth Holographic Y2K',
-    promptInstruction: 'captured with holographic Y2K photobooth aesthetic, iridescent chrome shine and soft studio lighting',
-  },
-  {
-    id: 'frame_classic_pb',
-    category: 'Photobooth',
-    label: 'Classic B&W Photobooth',
-    promptInstruction: 'captured with classic black and white film photobooth aesthetic, dramatic soft studio contrast',
-  },
-  // Effects & Fantasy
-  {
-    id: 'rose_flower',
-    category: 'Effects',
-    label: 'Rose Flower (Hoa hồng)',
-    promptInstruction: 'holding a single red rose flower with romantic warm cinematic lighting, preserving exact pose and background',
-  },
-  {
-    id: 'golden_hour',
-    category: 'Effects',
-    label: 'Golden Hour (Nắng chiều)',
-    promptInstruction: 'bathed in rich warm sunset golden hour sunlight glow and soft shadows, preserving exact pose and background',
-  },
-  {
-    id: 'watercolor_art',
-    category: 'Effects',
-    label: 'Watercolor Art (Màu nước)',
-    promptInstruction: 'delicate hand-painted watercolor illustration artwork with soft brush strokes and artistic paper texture',
-  },
-  {
-    id: 'harry_potter',
-    category: 'Effects',
-    label: 'Harry Potter Wizard',
-    promptInstruction: 'dressed as a Hogwarts wizard wearing a dark academic robe and scarf, magical candlelit castle lighting',
-  },
-  {
-    id: 'minecraft',
-    category: 'Effects',
-    label: 'Minecraft Voxel',
-    promptInstruction: 'transformed into a stylized blocky Minecraft 3D voxel world aesthetic while preserving pose and scene',
-  },
-  {
-    id: 'shrek_ogre',
-    category: 'Effects',
-    label: 'Shrek Ogre',
-    promptInstruction: 'playful transformation with green Shrek ogre rounded ears and rustic tunic while preserving exact pose',
-  },
-  {
-    id: 'superhero_cape',
-    category: 'Effects',
-    label: 'Superhero Cape',
-    promptInstruction: 'dressed in a vibrant blue and red superhero suit with flowing red cape, dramatic studio lighting',
-  },
-  {
-    id: 'pirate_hat',
-    category: 'Effects',
-    label: 'Pirate Captain',
-    promptInstruction: 'dressed like a movie pirate captain with weathered leather tricorn hat and coat, preserving exact pose',
-  },
-  {
-    id: 'ocean_underwater',
-    category: 'Effects',
-    label: 'Ocean Underwater',
-    promptInstruction: 'underwater ocean blue light caustics and floating bubbles around the portrait, preserving exact pose',
-  },
-  {
-    id: 'fireworks',
-    category: 'Effects',
-    label: 'Fireworks (Pháo hoa)',
-    promptInstruction: 'night sky filled with colorful exploding fireworks reflections across the scene, preserving exact pose',
-  },
-];
+export const LOCKET_FILTERS: LocketFilterPreset[] = OFFICIAL_LOCKET_FILTERS;
 
 export const LOCKET_FILTER_ALIASES: Record<string, string> = {
   stk_dio_disco: 'disco_lights',
@@ -762,9 +353,33 @@ export interface ExtractedLocketParams {
   model: FreeAiModel;
   imageBase64: string;
   imageUrl: string;
+  storagePath: string;
   originalUrl: string;
   isCallable: boolean;
   bodyKeys: string[];
+}
+
+function normalizeFirebaseStorageRefToUrl(rawRef: string): string {
+  const clean = rawRef.trim();
+  if (!clean) return '';
+  if (/^https?:\/\//i.test(clean)) return clean;
+  if (clean.startsWith('gs://')) {
+    const withoutScheme = clean.slice(5);
+    const slashIdx = withoutScheme.indexOf('/');
+    if (slashIdx > 0) {
+      const bucket = withoutScheme.slice(0, slashIdx);
+      const objectPath = withoutScheme.slice(slashIdx + 1).replace(/^\/+/, '');
+      if (bucket && objectPath) {
+        return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(objectPath)}?alt=media`;
+      }
+    }
+    return '';
+  }
+  const normalizedPath = clean.replace(/^\/+/, '');
+  if (normalizedPath.includes('/')) {
+    return `https://firebasestorage.googleapis.com/v0/b/locket-img/o/${encodeURIComponent(normalizedPath)}?alt=media`;
+  }
+  return '';
 }
 
 export function extractLocketGenerateParams(rawBody: unknown): ExtractedLocketParams {
@@ -800,6 +415,12 @@ export function extractLocketGenerateParams(rawBody: unknown): ExtractedLocketPa
   const rawFilterId = pickString([
     'filter_id',
     'filterId',
+    'look_id',
+    'lookId',
+    'appearance_id',
+    'appearanceId',
+    'custom_filter_id',
+    'customFilterId',
     'filter_name',
     'filterName',
     'sticker_id',
@@ -817,6 +438,7 @@ export function extractLocketGenerateParams(rawBody: unknown): ExtractedLocketPa
     'style_id',
     'styleId',
     'filter',
+    'look',
     'id',
     'name',
   ]);
@@ -826,6 +448,10 @@ export function extractLocketGenerateParams(rawBody: unknown): ExtractedLocketPa
     'prompt',
     'custom_prompt',
     'customPrompt',
+    'user_prompt',
+    'userPrompt',
+    'look_prompt',
+    'lookPrompt',
     'text',
     'caption',
     'description',
@@ -869,24 +495,32 @@ export function extractLocketGenerateParams(rawBody: unknown): ExtractedLocketPa
     'thumbnailUrl',
   ]);
 
+  const storagePath = pickString([
+    'storage_path',
+    'storagePath',
+    'image_path',
+    'imagePath',
+    'file_path',
+    'filePath',
+    'gcs_path',
+    'gcsPath',
+  ]);
+
+  if (imageUrl && imageUrl.startsWith('gs://')) {
+    imageUrl = normalizeFirebaseStorageRefToUrl(imageUrl);
+  }
+  if (!imageUrl && storagePath) {
+    imageUrl = normalizeFirebaseStorageRefToUrl(storagePath);
+  }
+
   const genericImage = pickString(['image', 'photo', 'input_image', 'source_image', 'media']);
   if (genericImage) {
     if (/^https?:\/\//i.test(genericImage) && !imageUrl) {
       imageUrl = genericImage;
+    } else if (genericImage.startsWith('gs://') && !imageUrl) {
+      imageUrl = normalizeFirebaseStorageRefToUrl(genericImage);
     } else if (!/^https?:\/\//i.test(genericImage) && !imageBase64) {
       imageBase64 = genericImage;
-    }
-  }
-
-  for (const arrKey of ['images', 'photos', 'image_urls', 'photo_urls', 'media_urls']) {
-    const arrVal = merged[arrKey];
-    if (Array.isArray(arrVal) && arrVal.length > 0 && typeof arrVal[0] === 'string' && arrVal[0].trim()) {
-      const first = arrVal[0].trim();
-      if (/^https?:\/\//i.test(first) && !imageUrl) {
-        imageUrl = first;
-      } else if (!/^https?:\/\//i.test(first) && !imageBase64) {
-        imageBase64 = first;
-      }
     }
   }
 
@@ -906,6 +540,7 @@ export function extractLocketGenerateParams(rawBody: unknown): ExtractedLocketPa
     model,
     imageBase64,
     imageUrl,
+    storagePath,
     originalUrl: pickString(['original_url', 'originalUrl']),
     isCallable: Boolean(callablePayload || root.callable),
     bodyKeys: Object.keys(merged).slice(0, 12),
@@ -983,46 +618,147 @@ export function isValidServerUrl(rawUrl: string): boolean {
   }
 }
 
+export function decodeJwtUserId(rawToken: string): string {
+  const clean = (rawToken || '').replace(/^Bearer\s+/i, '').trim();
+  if (!clean) return '';
+  const parts = clean.split('.');
+  if (parts.length !== 3 || !parts[1]) return '';
+  try {
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padLen = (4 - (base64.length % 4)) % 4;
+    const padded = base64 + '='.repeat(padLen);
+    const jsonStr =
+      typeof Buffer !== 'undefined'
+        ? Buffer.from(padded, 'base64').toString('utf-8')
+        : atob(padded);
+    const parsed = JSON.parse(jsonStr) as Record<string, unknown>;
+    const candidate = parsed.user_id || parsed.sub || parsed.localId || parsed.uid;
+    return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : '';
+  } catch {
+    return '';
+  }
+}
+
+export interface LocketPostMomentPayloadInput {
+  imageUrl: string;
+  imageMd5: string;
+  caption?: string;
+  audience?: 'all' | 'private';
+  now?: Date;
+}
+
+export function buildLocketPostMomentPayload({
+  imageUrl,
+  imageMd5,
+  caption = '',
+  audience = 'all',
+  now = new Date(),
+}: LocketPostMomentPayloadInput): { data: Record<string, unknown> } {
+  const yyyy = now.getUTCFullYear();
+  const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(now.getUTCDate()).padStart(2, '0');
+  const yyyymmdd = `${yyyy}${mm}${dd}`;
+  const cleanCaption = caption.trim();
+  const isPrivate = audience === 'private';
+
+  const overlays = cleanCaption
+    ? [
+        {
+          data: {
+            text: cleanCaption,
+            text_color: '#FFFFFFE6',
+            type: 'standard',
+            max_lines: 4,
+            background: {
+              colors: [],
+              material_blur: 'ultra_thin',
+            },
+          },
+          alt_text: cleanCaption,
+          overlay_id: 'caption:standard',
+          overlay_type: 'caption',
+        },
+      ]
+    : [];
+
+  return {
+    data: {
+      thumbnail_url: imageUrl,
+      md5: imageMd5,
+      recipients: [],
+      analytics: {
+        experiments: {
+          flag_4: { '@type': 'type.googleapis.com/google.protobuf.Int64Value', value: '43' },
+          flag_10: { '@type': 'type.googleapis.com/google.protobuf.Int64Value', value: '505' },
+          flag_23: { '@type': 'type.googleapis.com/google.protobuf.Int64Value', value: '400' },
+          flag_22: { '@type': 'type.googleapis.com/google.protobuf.Int64Value', value: '1203' },
+          flag_19: { '@type': 'type.googleapis.com/google.protobuf.Int64Value', value: '52' },
+          flag_18: { '@type': 'type.googleapis.com/google.protobuf.Int64Value', value: '1203' },
+          flag_16: { '@type': 'type.googleapis.com/google.protobuf.Int64Value', value: '303' },
+          flag_15: { '@type': 'type.googleapis.com/google.protobuf.Int64Value', value: '501' },
+          flag_14: { '@type': 'type.googleapis.com/google.protobuf.Int64Value', value: '500' },
+          flag_25: { '@type': 'type.googleapis.com/google.protobuf.Int64Value', value: '23' },
+        },
+        amplitude: {
+          device_id: 'locket-studio-web',
+          session_id: { '@type': 'type.googleapis.com/google.protobuf.Int64Value', value: String(now.getTime()) },
+        },
+      },
+      sent_to_all: !isPrivate,
+      sent_to_self_only: isPrivate,
+      caption: cleanCaption || undefined,
+      overlays,
+      show_personally: false,
+      update_streak_for_yyyymmdd: yyyymmdd,
+    },
+  };
+}
+
+export function groupLocketFiltersByCategory(
+  filters: LocketFilterPreset[] = LOCKET_FILTERS
+): Array<{ category: string; filters: LocketFilterPreset[] }> {
+  const sectionMap = new Map<string, LocketFilterPreset[]>();
+  for (const item of filters) {
+    if (!item || item.id === 'none') continue;
+    const list = sectionMap.get(item.category) || [];
+    list.push(item);
+    sectionMap.set(item.category, list);
+  }
+  return Array.from(sectionMap.entries()).map(([category, items]) => ({
+    category,
+    filters: items,
+  }));
+}
+
 export function generateFilterUnlockScript(): string {
   return `// ============================================================
 // Locket Filter & Gold Account Unlock (Clean Self-Hosted)
-// Mở khóa quyền can_use_filters, can_generate_filtered_image, Photobooth
-// trên api.locketcamera.com — KHÔNG đụng vào fetchUser/bạn bè/avatar/moments.
+// Mở khóa quyền can_use_filters, can_generate_filtered_image, Gold badge
+// trên api.locketcamera.com — KHÔNG gửi dữ liệu sang server/worker ngoài.
 // ============================================================
 
 (function () {
   const reqUrl = typeof $request !== "undefined" && $request && $request.url ? String($request.url) : "";
-  const isFriendsOrFeed = /fetchUser|getUser|getFriends|getUsers|fetchFriends|getFriend|getRecipients|recipients|moments|fetchMoments|getMoments|getLatestMoment|contacts|syncContact|postMoment|getGroupMessages|avatar|profile_picture/i.test(reqUrl);
 
   if (typeof $response === "undefined") {
-    if (isFriendsOrFeed) {
-      $done({});
-      return;
-    }
-
     if (reqUrl.includes("changeProfileInfo")) {
-      const reqBody = ($request && $request.body) ? String($request.body) : "";
-      if (reqBody.includes("badge")) {
-        const headers = {
-          "Content-Type": "application/json; charset=utf-8",
-          "Access-Control-Allow-Origin": "*"
-        };
-        const payload = {
-          badge: "locket_gold",
-          badge_tier: "gold",
-          is_gold: true,
-          success: true
-        };
-        $done({
-          response: {
-            status: 200,
-            headers: headers,
-            body: JSON.stringify({ data: payload, result: payload })
-          }
-        });
-        return;
-      }
-      $done({});
+      const headers = {
+        "Content-Type": "application/json; charset=utf-8",
+        "Access-Control-Allow-Origin": "*"
+      };
+      const payload = {
+        badge: "locket_gold",
+        badge_tier: "gold",
+        is_gold: true,
+        success: true
+      };
+      $done({
+        response: {
+          status: 200,
+          headers: headers,
+          body: JSON.stringify({ data: payload, result: payload })
+        }
+      });
       return;
     }
 
@@ -1039,7 +775,7 @@ export function generateFilterUnlockScript(): string {
     return;
   }
 
-  if (isFriendsOrFeed || reqUrl.includes("generateFilteredImage") || reqUrl.includes("createFilteredImage")) {
+  if (/generateFilteredImage|createFilteredImage|generateLook|createLook|applyLook|renderLook|generateAppearance|createAppearance|createUserFilter|createCustomFilter/i.test(reqUrl)) {
     $done({});
     return;
   }
@@ -1065,7 +801,8 @@ export function generateFilterUnlockScript(): string {
     return;
   }
 
-  const upgradedStatus = origStatus === 400 || origStatus === 401 || origStatus === 403;
+  const isFriendsOrFeed = /getFriends|getUsers|fetchFriends|getRecipients|recipients|moments|fetchMoments|getMoments|contacts|postMoment|getGroupMessages/i.test(reqUrl);
+  const upgradedStatus = !isFriendsOrFeed && (origStatus === 400 || origStatus === 401 || origStatus === 403);
 
   const applyGoldAndFilterAccess = (target) => {
     if (!target || typeof target !== "object" || Array.isArray(target)) return;
@@ -1083,9 +820,16 @@ export function generateFilterUnlockScript(): string {
     target.can_use_gold_features = true;
     target.can_generate_filtered_image = true;
     target.can_create_filtered_image = true;
+    target.can_create_custom_filters = true;
+    target.can_create_looks = true;
+    target.allows_custom_filters = true;
+    target.ai_filters_enabled = true;
+    target.custom_filters_enabled = true;
+    target.filter_generation_enabled = true;
+    target.eligible = true;
+    target.is_eligible = true;
     target.can_use_photobooth = true;
     target.photobooth_access = true;
-    target.photobooth_enabled = true;
     target.unlimited_filters = true;
     target.has_ai_access = true;
     target.filter_access = true;
@@ -1093,34 +837,46 @@ export function generateFilterUnlockScript(): string {
     target.filter_credits = 999;
     target.filters_remaining = 999;
     target.daily_filter_limit = 999;
+    target.custom_filter_credits = 999;
+    target.custom_filters_remaining = 999;
+    target.looks_remaining = 999;
   };
 
-  const isAccountEndpoint = /getAccount|accountInfo|userProfile|getSubscription|subscription|clientData|entitlement|featureFlags|appConfig|checkFilter|filterUsage/i.test(reqUrl);
+  const isSingleUserEndpoint = !isFriendsOrFeed && /getUser|fetchUser|getAccount|accountInfo|userProfile|getSubscription|subscription|clientData|filter|look|credit|eligib|feature|photobooth|entitle/i.test(reqUrl);
   const isSingleUserObject = Boolean(
-    isAccountEndpoint ||
-    (obj.data && typeof obj.data === "object" && !Array.isArray(obj.data) && obj.data.email) ||
-    (obj.result && typeof obj.result === "object" && !Array.isArray(obj.result) && obj.result.email) ||
-    (obj.user && typeof obj.user === "object" && !Array.isArray(obj.user) && obj.user.email)
+    !isFriendsOrFeed &&
+    (
+      isSingleUserEndpoint ||
+      (obj.data && typeof obj.data === "object" && !Array.isArray(obj.data) && obj.data.email) ||
+      (obj.result && typeof obj.result === "object" && !Array.isArray(obj.result) && obj.result.email) ||
+      (obj.user && typeof obj.user === "object" && !Array.isArray(obj.user) && obj.user.email)
+    )
   );
 
   if (isSingleUserObject) {
     applyGoldAndFilterAccess(obj);
     if (obj.data && typeof obj.data === "object") applyGoldAndFilterAccess(obj.data);
-    if (obj.result && typeof obj.result === "object") applyGoldAndFilterAccess(obj.result);
+    if (obj.result && typeof obj.result === "object") {
+      applyGoldAndFilterAccess(obj.result);
+      if (obj.result.data && typeof obj.result.data === "object") applyGoldAndFilterAccess(obj.result.data);
+    }
     if (obj.user && typeof obj.user === "object") applyGoldAndFilterAccess(obj.user);
   }
 
   const falseKeys = [
     "is_locked", "locked", "requires_gold", "require_gold", "gold_only",
     "is_gold_only", "paywall", "show_paywall", "show_upsell", "upsell",
-    "blurred", "is_blurred", "needs_gold"
+    "blurred", "is_blurred", "needs_gold", "limit_reached", "quota_exceeded",
+    "credits_exhausted"
   ];
   const trueKeys = [
     "can_view", "unlocked", "is_unlocked", "is_free", "free",
     "can_use_filter", "allowed", "can_use_filters",
     "can_generate_filtered_image", "can_create_filtered_image",
-    "can_use_photobooth", "photobooth_access", "photobooth_enabled",
-    "unlimited_filters", "has_ai_access", "filter_access", "is_available", "available"
+    "can_create_custom_filters", "can_create_looks", "allows_custom_filters",
+    "ai_filters_enabled", "custom_filters_enabled", "filter_generation_enabled",
+    "eligible", "is_eligible", "can_use_photobooth", "photobooth_access",
+    "unlimited_filters", "has_ai_access", "filter_access"
   ];
 
   const transformNode = (node) => {
@@ -1158,8 +914,9 @@ export function generateFilterUnlockScript(): string {
 
   transformNode(obj);
 
-  if (/(get|fetch|list).*filter|cameraFilters|photoboothFilters|filterTemplates/i.test(reqUrl)) {
+  if (/getfilters/i.test(reqUrl)) {
     const NATIVE_FILTER_CATALOG = [
+      { id: "practical_magic_2", name: "Practical Magic 2", category: "Events", icon: "https://storage.googleapis.com/locket-public/camera_filters/icons/pm2_cutout.png" },
       { id: "flower_crown", name: "Flower Crown", category: "Cute" },
       { id: "cutesy", name: "Cutesy", category: "Cute" },
       { id: "sticker_face", name: "Sticker Face", category: "Cute" },
@@ -1180,16 +937,11 @@ export function generateFilterUnlockScript(): string {
       { id: "cowboy_cowgirl", name: "Cowboy", category: "Costumes" },
       { id: "clown", name: "Clown", category: "Costumes" },
       { id: "photobooth", name: "Photobooth 4-Cut", category: "Photobooth" },
-      { id: "photobooth_4cut", name: "Photobooth 4-Cut Classic", category: "Photobooth" },
       { id: "photobooth_cute", name: "Photobooth Cute", category: "Photobooth" },
-      { id: "pb_scrapbook_ripped_4cut", name: "Scrapbook 4-Cut", category: "Photobooth" },
-      { id: "pb_ripped_paper_4cut", name: "Ripped Paper 4-Cut", category: "Photobooth" },
-      { id: "pb_denim_ripped_2x2", name: "Denim 2x2", category: "Photobooth" },
       { id: "pb_strawberry", name: "Strawberry Strip", category: "Photobooth" },
       { id: "pb_vintage", name: "Vintage Y2K", category: "Photobooth" },
       { id: "pb_galaxy", name: "Galaxy 4-Cut", category: "Photobooth" },
       { id: "pb_holo_4cut", name: "Holo 4-Cut", category: "Photobooth" },
-      { id: "frame_classic_pb", name: "Classic B&W Booth", category: "Photobooth" },
       { id: "golden_hour", name: "Golden Hour", category: "Artistic" },
       { id: "watercolor_art", name: "Watercolor Art", category: "Artistic" },
       { id: "harry_potter", name: "Wizard", category: "Costumes" }
@@ -1201,58 +953,36 @@ export function generateFilterUnlockScript(): string {
         name: item.name,
         display_name: item.name,
         category: item.category,
-        type: item.category === "Photobooth" ? "photobooth" : "ai",
-        is_photobooth: item.category === "Photobooth",
+        type: "ai",
         is_locked: false,
         requires_gold: false,
         is_gold_only: false,
-        is_gold: false,
-        gold_only: false,
         unlocked: true,
         is_unlocked: true,
         is_free: true,
         can_use: true,
-        is_available: true,
-        available: true,
         enabled: true,
-        is_enabled: true,
         sort_order: idx + 1
       };
-    });
-
-    const PHOTOBOOTH_CATALOG = NATIVE_FILTER_CATALOG.filter(function (item) {
-      return item.category === "Photobooth";
     });
 
     const populateFiltersContainer = (container) => {
       if (!container || typeof container !== "object") return;
       if (!Array.isArray(container.filters) || container.filters.length === 0) {
         container.filters = NATIVE_FILTER_CATALOG;
-      } else {
-        const existingIds = {};
-        for (let i = 0; i < container.filters.length; i++) {
-          const f = container.filters[i];
-          if (f && (f.id || f.filter_id)) {
-            existingIds[String(f.id || f.filter_id)] = true;
-          }
-        }
-        for (let j = 0; j < PHOTOBOOTH_CATALOG.length; j++) {
-          if (!existingIds[PHOTOBOOTH_CATALOG[j].id]) {
-            container.filters.push(PHOTOBOOTH_CATALOG[j]);
-          }
-        }
-      }
-      if (!Array.isArray(container.photobooth_filters) || container.photobooth_filters.length === 0) {
-        container.photobooth_filters = PHOTOBOOTH_CATALOG;
       }
       if (!Array.isArray(container.friend_filters)) {
         container.friend_filters = [];
       }
       container.can_use_filters = true;
       container.can_generate_filtered_image = true;
-      container.can_create_filtered_image = true;
+      container.can_create_custom_filters = true;
+      container.can_create_looks = true;
+      container.allows_custom_filters = true;
+      container.ai_filters_enabled = true;
+      container.custom_filters_enabled = true;
+      container.filter_generation_enabled = true;
       container.can_use_photobooth = true;
-      container.photobooth_enabled = true;
       container.filters_enabled = true;
     };
 
@@ -1324,7 +1054,6 @@ if (typeof $response !== "undefined") {
     method: ($request && $request.method) || "POST",
     headers: Object.assign({}, ($request && $request.headers) || {}, {
       "Content-Type": "application/json",
-      "Accept-Encoding": "identity",
       "Host": "${serverHost}",
       "X-Locket-Proxy": "QuantumultX"
     }),
@@ -1354,19 +1083,11 @@ if (typeof $response !== "undefined") {
   return `// ============================================================
 // Locket In-App AI & Filter Redirect (${client.toUpperCase()})
 // Dùng $httpClient.post gọi thẳng ${serverHost}/generateFilteredImage
-// Hỗ trợ $argument override URL server khi script host trên GitHub Raw
+// rồi trả response 200 JSON về Locket (tương thích 100% Shadowrocket/Loon/Surge)
 // ============================================================
 
-const DEFAULT_BASE = "${cleanUrl}";
-const ARG_BASE = (typeof $argument === "string" && /^https?:\\/\\//i.test($argument.trim()))
-  ? $argument.trim().replace(/\\/+$/, "")
-  : "";
-const ACTIVE_BASE = ARG_BASE || DEFAULT_BASE;
-const TARGET_ENDPOINT = ACTIVE_BASE + "/generateFilteredImage";
-let TARGET_HOST = "${serverHost}";
-try {
-  TARGET_HOST = ACTIVE_BASE.replace(/^https?:\\/\\//i, "").split("/")[0];
-} catch (e) {}
+const TARGET_ENDPOINT = "${cleanUrl}/generateFilteredImage";
+const TARGET_HOST = "${serverHost}";
 
 (function () {
   if (typeof $response !== "undefined") {
@@ -1388,22 +1109,11 @@ try {
     const origHeaders = $request.headers || {};
     for (const k of Object.keys(origHeaders)) {
       const low = k.toLowerCase();
-      if (
-        low === "host" ||
-        low === "content-length" ||
-        low === "content-encoding" ||
-        low === "accept-encoding" ||
-        low === "connection" ||
-        low === "transfer-encoding" ||
-        low.startsWith(":")
-      ) {
-        continue;
-      }
+      if (low === "host" || low === "content-length" || low.startsWith(":")) continue;
       fwdHeaders[k] = origHeaders[k];
     }
     fwdHeaders["Host"] = TARGET_HOST;
     fwdHeaders["Content-Type"] = "application/json";
-    fwdHeaders["Accept-Encoding"] = "identity";
     fwdHeaders["X-Locket-Proxy"] = "${client}";
 
     let rawBody = $request.body || "{}";
@@ -1470,11 +1180,7 @@ export function generateMomentAiFilterScript(serverUrl: string, client: ProxyCli
 // Nếu gửi ảnh bình thường -> cho qua ngay lập tức (<1ms).
 // ============================================================
 
-const DEFAULT_BASE = "${cleanUrl}";
-const ARG_BASE = (typeof $argument === "string" && /^https?:\\/\\//i.test($argument.trim()))
-  ? $argument.trim().replace(/\\/+$/, "")
-  : "";
-const MOMENT_AI_ENDPOINT = (ARG_BASE || DEFAULT_BASE) + "/api/locket/moment-ai-filter";
+const MOMENT_AI_ENDPOINT = "${cleanUrl}/api/locket/moment-ai-filter";
 
 (function () {
   if (typeof $response !== "undefined" || typeof $request === "undefined" || !$request || !$request.body) {
@@ -1527,7 +1233,6 @@ const MOMENT_AI_ENDPOINT = (ARG_BASE || DEFAULT_BASE) + "/api/locket/moment-ai-f
       url: MOMENT_AI_ENDPOINT,
       headers: {
         "Content-Type": "application/json",
-        "Accept-Encoding": "identity",
         "X-Locket-Proxy": "${client}"
       },
       body: JSON.stringify({
@@ -1565,6 +1270,7 @@ export function generateDirectFilterScript(): string {
 
 (function () {
   const FILTER_HINTS = {
+    practical_magic_2: "lush deep green vines and subtle roses with understated warm glowing fireflies, dreamy enchanted portrait",
     flower_crown: "wearing a delicate fresh pastel flower crown on head, dreamy soft sunlight glow",
     cutesy: "soft rosy blush cheeks, adorable kawaii aesthetic, dreamy pastel tones, glowing skin",
     sticker_face: "playful cute pastel face stickers on cheeks, sparkling eyes",
@@ -1640,16 +1346,15 @@ export function generateDirectFilterScript(): string {
   function respondWithImage(imgUrl, provider, filterId) {
     const dataNode = {
       status: 200,
+      id: filterId || "custom_look",
+      name: filterId || "custom_look",
       outputUrl: imgUrl,
       output_url: imgUrl,
-      outputImageUrl: imgUrl,
-      output_image_url: imgUrl,
-      filteredImageUrl: imgUrl,
       filtered_image_url: imgUrl,
-      transformedImageUrl: imgUrl,
-      transformed_image_url: imgUrl,
-      resultUrl: imgUrl,
+      filteredImageUrl: imgUrl,
       result_url: imgUrl,
+      thumbnail_url: imgUrl,
+      preview_url: imgUrl,
       url: imgUrl,
       imageUrl: imgUrl,
       image_url: imgUrl
@@ -1659,16 +1364,15 @@ export function generateDirectFilterScript(): string {
       status: 200,
       provider: provider,
       filter_id: filterId || undefined,
+      id: filterId || "custom_look",
+      name: filterId || "custom_look",
       outputUrl: imgUrl,
       output_url: imgUrl,
-      outputImageUrl: imgUrl,
-      output_image_url: imgUrl,
-      filteredImageUrl: imgUrl,
       filtered_image_url: imgUrl,
-      transformedImageUrl: imgUrl,
-      transformed_image_url: imgUrl,
-      resultUrl: imgUrl,
+      filteredImageUrl: imgUrl,
       result_url: imgUrl,
+      thumbnail_url: imgUrl,
+      preview_url: imgUrl,
       url: imgUrl,
       imageUrl: imgUrl,
       image_url: imgUrl,
@@ -1689,7 +1393,8 @@ export function generateDirectFilterScript(): string {
 
   function buildPollinationsUrl(prompt) {
     const seed = Math.floor(Math.random() * 1000000);
-    return "https://image.pollinations.ai/prompt/" + encodeURIComponent(prompt) + "?width=768&height=1024&model=flux&seed=" + seed + "&nologo=true";
+    const capped = String(prompt || "").slice(0, 550);
+    return "https://image.pollinations.ai/prompt/" + encodeURIComponent(capped) + "?width=768&height=1024&model=flux&seed=" + seed + "&nologo=true";
   }
 
   try {
@@ -1705,30 +1410,26 @@ export function generateDirectFilterScript(): string {
     const merged = Object.assign({}, raw, inner, subPayload, subFilter);
 
     let filterId = String(
-      merged.filter_id || merged.filterId || merged.sticker_id || merged.stickerId ||
-      merged.preset_id || merged.presetId || merged.template_id || merged.effect_id ||
-      merged.filter || merged.id || ""
+      merged.filter_id || merged.filterId || merged.look_id || merged.lookId ||
+      merged.appearance_id || merged.appearanceId || merged.custom_filter_id || merged.customFilterId ||
+      merged.sticker_id || merged.stickerId || merged.preset_id || merged.presetId ||
+      merged.template_id || merged.effect_id || merged.filter || merged.look || merged.id || ""
     ).trim().toLowerCase();
     if (filterId.startsWith("stk_dio_")) filterId = filterId.slice(8);
     else if (filterId.startsWith("stk_")) filterId = filterId.slice(4);
     if (FILTER_ALIASES[filterId]) filterId = FILTER_ALIASES[filterId];
 
-    const userPrompt = String(merged.prompt || merged.custom_prompt || merged.text || merged.description || "").trim();
+    const userPrompt = String(merged.prompt || merged.custom_prompt || merged.user_prompt || merged.look_prompt || merged.text || merged.description || "").trim();
     const hint = FILTER_HINTS[filterId] || (filterId ? filterId.replace(/_/g, " ") + " filter aesthetic" : "aesthetic portrait photography");
     const fullPrompt = [userPrompt, hint, "authentic candid 35mm portrait, natural lighting"].filter(Boolean).join(", ");
 
-    let rawImg = String(
+    const rawImg = String(
       merged.image_base64 || merged.imageBase64 || merged.photo_base64 ||
       merged.source_base64 || merged.input_base64 || merged.image_data || merged.base64 ||
       ((merged.image && !/^https?:\\/\\//i.test(merged.image)) ? merged.image : "") ||
       ((merged.photo && !/^https?:\\/\\//i.test(merged.photo)) ? merged.photo : "") ||
       ""
     );
-    if (!rawImg && Array.isArray(merged.images) && merged.images.length && typeof merged.images[0] === "string" && !/^https?:\\/\\//i.test(merged.images[0])) {
-      rawImg = merged.images[0];
-    } else if (!rawImg && Array.isArray(merged.photos) && merged.photos.length && typeof merged.photos[0] === "string" && !/^https?:\\/\\//i.test(merged.photos[0])) {
-      rawImg = merged.photos[0];
-    }
     const cleanBase64 = rawImg.replace(/^data:image\\/[a-zA-Z0-9+.-]+;base64,/, "").trim();
 
     if (typeof $httpClient === "undefined") {
@@ -1765,7 +1466,7 @@ export function generateDirectFilterScript(): string {
           "Client-Agent": "LocketGitRawDirect:1.0:ios"
         },
         body: JSON.stringify(submitPayload),
-        timeout: 10
+        timeout: 12
       },
       function (err, resp, data) {
         if (err || !data) {
@@ -1782,7 +1483,7 @@ export function generateDirectFilterScript(): string {
         }
 
         let attempts = 0;
-        const maxAttempts = 16;
+        const maxAttempts = 24;
         function pollStatus() {
           attempts += 1;
           $httpClient.get(
@@ -1856,6 +1557,7 @@ if (
   targetUrl.includes("/api/locket/") ||
   targetUrl.includes("analytics.locketcamera.com") ||
   targetUrl.includes("cdn.locketcamera.com") ||
+  /getMoments|fetchMoments|getGroupMessages|getLatestMoment/i.test(targetUrl) ||
   (!ua.includes("Locket") && !isTrackedHost)
 ) {
   $done({});
@@ -1963,6 +1665,7 @@ export function generateMergedLocketConf(
   const rawBase = normalizeGitRawScriptsUrl(options.scriptBaseUrl || '');
   const scriptOrigin = rawBase || `${cleanServer}/scripts`;
   const directNoServer = Boolean(options.directNoServer);
+  const enableTrafficProbe = options.enableTrafficProbe ?? !directNoServer;
 
   const scriptSrc =
     options.aiScriptUrl.trim() ||
@@ -1975,6 +1678,13 @@ export function generateMergedLocketConf(
   const momentAiSrc = rawBase
     ? `${scriptOrigin}/locket_ai_moment.js`
     : `${cleanServer}/scripts/locket_ai_moment.js?client=${client}`;
+
+  const probeReqSrc = rawBase
+    ? `${scriptOrigin}/locket_traffic_probe.js`
+    : `${cleanServer}/scripts/locket_traffic_probe.js`;
+  const probeResSrc = rawBase
+    ? `${scriptOrigin}/locket_response_probe.js`
+    : `${cleanServer}/scripts/locket_response_probe.js`;
 
   const filterUnlockSrc = `${scriptOrigin}/locket_filter_unlock.js`;
   const locketFixSrc = `${scriptOrigin}/locketfix8.js`;
@@ -1998,16 +1708,13 @@ export function generateMergedLocketConf(
       );
     }
     rewriteLines.push(`${aiPattern} url script-analyze-echo-response ${scriptSrc}`);
-    if (!directNoServer) {
-      rewriteLines.push(`${LOCKET_MOMENT_AI_PATTERN} url script-request-body ${momentAiSrc}`);
-    }
 
     return `# Quantumult X Configuration - 100% Locket Gold + In-App Filter AI
 [rewrite_local]
 ${rewriteLines.join('\n')}
 
 [mitm]
-hostname = api.revenuecat.com, firebaseremoteconfig.googleapis.com, -analytics.locketcamera.com, -cdn.locketcamera.com, -firebasestorage.googleapis.com, api.locketcamera.com, us-central1-locket-4252a.cloudfunctions.net, *-locket-4252a.cloudfunctions.net, *.a.run.app
+hostname = api.revenuecat.com, firebaseremoteconfig.googleapis.com, -analytics.locketcamera.com, -cdn.locketcamera.com, api.locketcamera.com, *.locketcamera.com, us-central1-locket-4252a.cloudfunctions.net, *.cloudfunctions.net, *.a.run.app
 `;
   }
 
@@ -2018,14 +1725,14 @@ hostname = api.revenuecat.com, firebaseremoteconfig.googleapis.com, -analytics.l
       `deleteHeader = type=http-request, pattern=^https:\\/\\/api\\.revenuecat\\.com\\/.+\\/(receipts|subscribers), script-path=${locketHeaderSrc}, timeout=60`,
       `locket_rc_req = type=http-request, pattern=^https:\\/\\/firebaseremoteconfig\\.googleapis\\.com\\/v1\\/projects\\/locket-4252a\\/.+, script-path=${filterUnlockSrc}, requires-body=false, max-size=-1, timeout=30`,
       `locket_rc = type=http-response, pattern=^https:\\/\\/firebaseremoteconfig\\.googleapis\\.com\\/v1\\/projects\\/locket-4252a\\/.+, script-path=${forceGoldSrc}, requires-body=true, max-size=-1, timeout=60`,
-      `locket_filter_unlock_req = type=http-request, pattern=${LOCKET_FILTER_UNLOCK_PATTERN}, script-path=${filterUnlockSrc}, requires-body=true, max-size=-1, timeout=30`,
+      `locket_filter_unlock_req = type=http-request, pattern=${LOCKET_FILTER_UNLOCK_PATTERN}, script-path=${filterUnlockSrc}, requires-body=false, max-size=-1, timeout=30`,
       `locket_filter_unlock_res = type=http-response, pattern=${LOCKET_FILTER_UNLOCK_PATTERN}, script-path=${filterUnlockSrc}, requires-body=true, max-size=-1, timeout=30`
     );
   }
-  if (options.enableTrafficProbe) {
+  if (enableTrafficProbe) {
     scriptLines.push(
-      `locket_probe = type=http-request, pattern=^https:\\/\\/(?!(analytics|cdn)\\.).*(locketcamera\\.com|cloudfunctions\\.net|a\\.run\\.app|firebaseremoteconfig\\.googleapis\\.com|firestore\\.googleapis\\.com|firebasestorage\\.googleapis\\.com)\\/.*, script-path=${cleanServer}/scripts/locket_traffic_probe.js, requires-body=true, max-size=1048576, timeout=5`,
-      `locket_probe_res = type=http-response, pattern=^https:\\/\\/(?!(analytics|cdn)\\.)(?!.*(getMoments|fetchMoments|getGroupMessages))(api\\.locketcamera\\.com|[^/]*cloudfunctions\\.net|[^/]*\\.a\\.run\\.app|firestore\\.googleapis\\.com)\\/.*, script-path=${cleanServer}/scripts/locket_response_probe.js, requires-body=true, max-size=1048576, timeout=5`
+      `locket_probe = type=http-request, pattern=^https:\\/\\/(?!(analytics|cdn)\\.)(?!.*(getMoments|fetchMoments|getGroupMessages|getLatestMoment)).*(locketcamera\\.com|cloudfunctions\\.net|a\\.run\\.app|firebaseremoteconfig\\.googleapis\\.com|firestore\\.googleapis\\.com|firebasestorage\\.googleapis\\.com)\\/.*, script-path=${probeReqSrc}, requires-body=true, max-size=1048576, timeout=5`,
+      `locket_probe_res = type=http-response, pattern=^https:\\/\\/(?!(analytics|cdn)\\.)(?!.*(getMoments|fetchMoments|getGroupMessages|getLatestMoment))([^/]+\\.locketcamera\\.com|[^/]*cloudfunctions\\.net|[^/]*\\.a\\.run\\.app|firestore\\.googleapis\\.com)\\/.*, script-path=${probeResSrc}, requires-body=true, max-size=1048576, timeout=5`
     );
   }
   if (directNoServer) {
@@ -2033,10 +1740,9 @@ hostname = api.revenuecat.com, firebaseremoteconfig.googleapis.com, -analytics.l
       `locket_ai_filter_direct = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`
     );
   } else {
-    const serverArg = rawBase ? `, argument="${cleanServer}"` : '';
     scriptLines.push(
-      `locket_ai_filter_req = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60${serverArg}`,
-      `locket_ai_moment_req = type=http-request, pattern=${LOCKET_MOMENT_AI_PATTERN}, script-path=${momentAiSrc}, requires-body=true, max-size=-1, timeout=60${serverArg}`
+      `locket_ai_filter_req = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`,
+      `locket_ai_moment_req = type=http-request, pattern=${LOCKET_MOMENT_AI_PATTERN}, script-path=${momentAiSrc}, requires-body=true, max-size=-1, timeout=60`
     );
   }
 
@@ -2045,13 +1751,13 @@ hostname = api.revenuecat.com, firebaseremoteconfig.googleapis.com, -analytics.l
     'firebaseremoteconfig.googleapis.com',
     '-analytics.locketcamera.com',
     '-cdn.locketcamera.com',
-    ...(options.enableTrafficProbe ? [] : ['-firebasestorage.googleapis.com']),
     'api.locketcamera.com',
+    '*.locketcamera.com',
     'us-central1-locket-4252a.cloudfunctions.net',
-    '*-locket-4252a.cloudfunctions.net',
+    '*.cloudfunctions.net',
     '*.a.run.app',
   ];
-  if (options.enableTrafficProbe) {
+  if (enableTrafficProbe) {
     mitmHosts.push('firestore.googleapis.com', 'firebasestorage.googleapis.com');
   }
 
@@ -2069,6 +1775,7 @@ FINAL,DIRECT
 ${scriptLines.join('\n')}
 
 [MITM]
+h2 = true
 hostname = ${mitmHosts.join(', ')}
 `;
 }
@@ -2078,6 +1785,7 @@ export function generateStandaloneServerCode(platform: DeployPlatform): string {
     return `// worker.js — Cloudflare Worker 0đ (Không Sleep, Không Giao Diện Web)
 // Chỉ cần dán 1 file này lên dash.cloudflare.com -> Workers & Pages -> Deploy
 const FILTER_PROMPTS = {
+  practical_magic_2: "lush deep green vines and subtle roses with understated warm glowing fireflies, dreamy enchanted portrait",
   flower_crown: "wearing a delicate fresh pastel flower crown on head, dreamy soft sunlight glow",
   cutesy: "soft rosy blush cheeks, adorable kawaii aesthetic, glowing skin",
   sticker_face: "playful cute pastel face stickers on cheeks, sparkling eyes",
@@ -2092,20 +1800,8 @@ const FILTER_PROMPTS = {
   wedding: "dressed in elegant white wedding attire, soft romantic daylight",
   clown: "colorful circus clown face paint and red nose",
   photobooth: "Korean 4-cut photobooth photo strip grid, 4 playful poses",
-  photobooth_cute: "cute pastel kawaii 4-cut photobooth collage strip with doodle stickers",
   pb_strawberry: "sweet strawberry frame 4-cut photobooth collage, pastel pink",
-  pb_vintage: "retro Y2K vintage film 4-cut photobooth strip, subtle grain",
-  pb_galaxy: "dreamy cosmic starry purple-blue 4-cut photobooth frame",
-  pb_holo_4cut: "iridescent holographic foil 4-cut photobooth strip",
-  frame_classic_pb: "classic black and white film 4-cut photobooth strip",
   santa_cutout: "wearing a cozy red Santa hat, warm Christmas lights bokeh"
-};
-
-const FILTER_ALIASES = {
-  photobooth_4cut: "photobooth",
-  pb_scrapbook_ripped_4cut: "photobooth_cute",
-  pb_ripped_paper_4cut: "photobooth_cute",
-  pb_denim_ripped_2x2: "photobooth"
 };
 
 function arrayBufferToBase64(buffer) {
@@ -2173,11 +1869,10 @@ export default {
     try {
       const raw = await request.json().catch(() => ({}));
       const body = (raw && raw.data && typeof raw.data === "object") ? raw.data : raw;
-      let filterId = String(body.filter_id || body.filterId || body.sticker_id || body.preset_id || body.template_id || "").trim().toLowerCase();
+      let filterId = String(body.filter_id || body.filterId || body.look_id || body.lookId || body.sticker_id || "").trim().toLowerCase();
       filterId = filterId.replace(/^stk_dio_/, "").replace(/^stk_/, "");
-      if (FILTER_ALIASES[filterId]) filterId = FILTER_ALIASES[filterId];
       const hint = FILTER_PROMPTS[filterId] || (filterId ? filterId.replace(/_/g, " ") + " filter" : "aesthetic portrait");
-      const rawPrompt = String(body.prompt || body.custom_prompt || body.text || "").trim();
+      const rawPrompt = String(body.prompt || body.custom_prompt || body.user_prompt || body.text || "").trim();
       const fullPrompt = [rawPrompt, hint, "authentic candid 35mm portrait"].filter(Boolean).join(", ");
 
       let cleanBase64 = String(body.image_base64 || body.imageBase64 || body.photo_base64 || body.base64 || "")
@@ -2185,15 +1880,17 @@ export default {
         .trim();
 
       let imgUrlField = String(body.image_url || body.imageUrl || body.source_url || body.photo_url || "");
-      for (const arrKey of ["images", "photos", "image_urls", "photo_urls"]) {
-        const arr = body[arrKey];
-        if (Array.isArray(arr) && arr.length && typeof arr[0] === "string") {
-          if (/^https?:\\/\\//i.test(arr[0]) && !imgUrlField) imgUrlField = arr[0];
-          else if (!cleanBase64) cleanBase64 = arr[0].replace(/^data:image\\/[a-zA-Z0-9+.-]+;base64,/, "").trim();
-        }
+      const storagePathField = String(body.storage_path || body.storagePath || body.image_path || "").trim();
+      if (!imgUrlField && storagePathField && storagePathField.includes("/")) {
+        imgUrlField = "https://firebasestorage.googleapis.com/v0/b/locket-img/o/" + encodeURIComponent(storagePathField.replace(/^\\/+/, "")) + "?alt=media";
       }
       if (!cleanBase64 && /^https?:\\/\\//i.test(imgUrlField)) {
-        const imgRes = await fetch(imgUrlField);
+        const fwdHeaders = {};
+        const auth = request.headers.get("authorization");
+        const appCheck = request.headers.get("x-firebase-appcheck");
+        if (auth) fwdHeaders["Authorization"] = auth;
+        if (appCheck) fwdHeaders["X-Firebase-AppCheck"] = appCheck;
+        const imgRes = await fetch(imgUrlField, { headers: fwdHeaders });
         if (imgRes.ok) cleanBase64 = arrayBufferToBase64(await imgRes.arrayBuffer());
       }
 
@@ -2203,27 +1900,13 @@ export default {
         outputUrl = await runImg2ImgHorde(fullPrompt, cleanBase64);
       } catch {
         const seed = Math.floor(Math.random() * 1000000);
-        outputUrl = "https://image.pollinations.ai/prompt/" + encodeURIComponent(fullPrompt) + "?width=768&height=1024&model=flux&seed=" + seed + "&nologo=true";
+        const cappedPrompt = fullPrompt.slice(0, 550);
+        outputUrl = "https://image.pollinations.ai/prompt/" + encodeURIComponent(cappedPrompt) + "?width=768&height=1024&model=flux&seed=" + seed + "&nologo=true";
         provider = "pollinations-fallback";
       }
 
-      const dataNode = {
-        status: 200,
-        outputUrl,
-        output_url: outputUrl,
-        outputImageUrl: outputUrl,
-        output_image_url: outputUrl,
-        filteredImageUrl: outputUrl,
-        filtered_image_url: outputUrl,
-        transformedImageUrl: outputUrl,
-        transformed_image_url: outputUrl,
-        resultUrl: outputUrl,
-        result_url: outputUrl,
-        url: outputUrl,
-        imageUrl: outputUrl,
-        image_url: outputUrl
-      };
-      const payload = { ok: true, status: 200, provider, filter_id: filterId || undefined, ...dataNode, data: dataNode };
+      const dataNode = { status: 200, id: filterId || "custom_look", name: filterId || "custom_look", outputUrl, output_url: outputUrl, filtered_image_url: outputUrl, filteredImageUrl: outputUrl, result_url: outputUrl, thumbnail_url: outputUrl, preview_url: outputUrl, url: outputUrl, imageUrl: outputUrl, image_url: outputUrl };
+      const payload = { ok: true, status: 200, provider, filter_id: filterId || undefined, prompt: rawPrompt || filterId || undefined, ...dataNode, data: dataNode };
       return Response.json({ ...payload, result: payload }, { status: 200, headers: cors });
     } catch (err) {
       return Response.json({ ok: false, error: err.message }, { status: 500, headers: cors });

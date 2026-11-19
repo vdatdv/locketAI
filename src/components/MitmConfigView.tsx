@@ -63,7 +63,7 @@ export function MitmConfigView({
 }: MitmConfigViewProps) {
   const [includeGoldUnlock, setIncludeGoldUnlock] = useState(true);
   const [usePatchedForceGold, setUsePatchedForceGold] = useState(true);
-  const [enableTrafficProbe, setEnableTrafficProbe] = useState(false);
+  const [enableTrafficProbe, setEnableTrafficProbe] = useState(true);
   const [aiPattern, setAiPattern] = useState(DEFAULT_SHADOWROCKET_AI_PATTERN);
   const [codeTab, setCodeTab] = useState<'conf' | 'script' | 'moment' | 'unlock'>('conf');
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -78,7 +78,7 @@ export function MitmConfigView({
       generateMergedLocketConf(cleanUrl, client, {
         includeGoldUnlock,
         usePatchedForceGold,
-        enableTrafficProbe: hostMode === 'self-hosted' && enableTrafficProbe,
+        enableTrafficProbe: !directNoServer && enableTrafficProbe,
         directNoServer,
         scriptBaseUrl: hostMode === 'self-hosted' ? '' : normalizedRawBase,
         aiScriptUrl: '',
@@ -138,7 +138,7 @@ export function MitmConfigView({
     directNoServer ? '&direct=1' : ''
   }${hostMode !== 'self-hosted' && normalizedRawBase ? `&rawBase=${encodeURIComponent(normalizedRawBase)}` : ''}${
     usePatchedForceGold ? '' : '&patchedForceGold=0'
-  }${hostMode === 'self-hosted' && enableTrafficProbe ? '&probe=1' : ''}`;
+  }${!directNoServer && !enableTrafficProbe ? '&probe=0' : ''}`;
 
   const probeImportUrl = `${cleanUrl || 'https://your-server.onrender.com'}/Locket.conf?client=${client}&probe=1`;
 
@@ -344,7 +344,7 @@ export function MitmConfigView({
                 <span>Dùng forceGold4.3.js đã bật sẵn Camera Roll, AI flags &amp; 10 nút Caption AI</span>
               </label>
             )}
-            {hostMode === 'self-hosted' && (
+            {!directNoServer && (
               <label className="flex items-start gap-2.5 text-sm text-slate-700 cursor-pointer">
                 <input
                   type="checkbox"
@@ -353,7 +353,7 @@ export function MitmConfigView({
                   className="mt-1 rounded border-slate-300 text-amber-600 focus:ring-amber-600"
                 />
                 <span>
-                  Bật Debug Probe (ghi request vào tab API &amp; Nhật ký)
+                  Bật Debug Probe (ghi request/response filter Locket vào tab API &amp; Nhật ký)
                 </span>
               </label>
             )}

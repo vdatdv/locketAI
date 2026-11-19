@@ -1,4 +1,4 @@
-import { Activity, CloudUpload, ShieldCheck } from 'lucide-react';
+import { Activity, CloudUpload, ShieldCheck, Sparkles } from 'lucide-react';
 import type { AppTab } from '../types';
 
 interface SidebarProps {
@@ -11,6 +11,7 @@ const NAV_ITEMS: Array<{
   label: string;
   icon: typeof ShieldCheck;
 }> = [
+  { id: 'filter-studio', label: 'Filter Studio (AI)', icon: Sparkles },
   { id: 'mitm', label: 'Shadowrocket & Git Raw', icon: ShieldCheck },
   { id: 'logs', label: 'API & Nhật ký', icon: Activity },
   { id: 'deploy', label: 'Git Raw / Worker / Render', icon: CloudUpload },
@@ -29,7 +30,7 @@ export function Sidebar({ activeTab, onSelectTab }: SidebarProps) {
           </span>
         </div>
 
-        <nav aria-label="Điều hướng chính" className="p-3 grid grid-cols-1 sm:grid-cols-3 lg:flex lg:flex-col gap-1.5">
+        <nav aria-label="Điều hướng chính" className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-col gap-1.5">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;

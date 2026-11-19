@@ -7,6 +7,7 @@ interface TopBarProps {
 }
 
 const TAB_TITLES: Record<AppTab, string> = {
+  'filter-studio': 'Filter Studio AI — Giống Locket Dio (0đ · Không VIP)',
   mitm: 'Cấu hình Shadowrocket & GitHub Raw (Thuần Locket)',
   logs: 'Kiểm tra Endpoint & Nhật ký Server',
   deploy: 'Xuất file GitHub Raw, Cloudflare Worker & Render',

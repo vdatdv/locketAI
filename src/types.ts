@@ -1,6 +1,6 @@
 import type { AspectRatioOption, FreeAiModel } from './utils/locketConfig';
 
-export type AppTab = 'mitm' | 'logs' | 'deploy';
+export type AppTab = 'filter-studio' | 'mitm' | 'logs' | 'deploy';
 
 export interface GeneratedPhotoItem {
   id: string;

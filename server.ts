@@ -6,6 +6,8 @@ import path from 'node:path';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import {
   buildEnhancedPrompt,
+  buildLocketPostMomentPayload,
+  decodeJwtUserId,
   extractLocketGenerateParams,
   generateDirectFilterScript,
   generateFilterUnlockScript,
@@ -16,6 +18,8 @@ import {
   generateStandaloneServerCode,
   generateTrafficProbeScript,
   getDimensionsForAspectRatio,
+  groupLocketFiltersByCategory,
+  LOCKET_FILTERS,
   patchForceGoldScript,
   type AspectRatioOption,
   type FreeAiModel,
@@ -172,8 +176,9 @@ async function fetchFromPollinations(
 ): Promise<{ imageDataUrl: string; provider: string }> {
   const upstreamModel = model === 'turbo' ? 'turbo' : 'flux';
   const seed = Math.floor(Math.random() * 1000000);
+  const urlPrompt = enhancedPrompt.slice(0, 550);
   const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(
-    enhancedPrompt
+    urlPrompt
   )}?width=${width}&height=${height}&model=${upstreamModel}&seed=${seed}&nologo=true`;
 
   const controller = new AbortController();
@@ -329,14 +334,28 @@ async function fetchFromPollinationsWithRetry(
   }
 }
 
-async function fetchRemoteImageAsBase64(imageUrl: string): Promise<string> {
+async function fetchRemoteImageAsBase64(
+  imageUrl: string,
+  authHeaders?: { authorization?: string; appCheck?: string }
+): Promise<string> {
   if (!/^https?:\/\//i.test(imageUrl)) return '';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
   try {
+    const headers: Record<string, string> = { 'User-Agent': 'LocketFreeAIServer/1.0' };
+    const isFirebaseOrLocketHost =
+      /^https?:\/\/(firebasestorage\.googleapis\.com|storage\.googleapis\.com|[^/]+\.locketcamera\.com)\//i.test(
+        imageUrl
+      );
+    if (isFirebaseOrLocketHost && authHeaders?.authorization) {
+      headers['Authorization'] = authHeaders.authorization;
+    }
+    if (isFirebaseOrLocketHost && authHeaders?.appCheck) {
+      headers['X-Firebase-AppCheck'] = authHeaders.appCheck;
+    }
     const res = await fetch(imageUrl, {
       signal: controller.signal,
-      headers: { 'User-Agent': 'LocketFreeAIServer/1.0' },
+      headers,
     });
     if (!res.ok) return '';
     const buf = Buffer.from(await res.arrayBuffer());
@@ -363,7 +382,15 @@ async function handleGenerateRequest(
   const { styleId, aspectRatio, model, originalUrl, bodyKeys } = extracted;
   let sourceBase64 = extracted.imageBase64;
   if (!sourceBase64 && extracted.imageUrl) {
-    sourceBase64 = await fetchRemoteImageAsBase64(extracted.imageUrl);
+    const auth = typeof req.headers.authorization === 'string' ? req.headers.authorization : undefined;
+    const appCheck =
+      typeof req.headers['x-firebase-appcheck'] === 'string'
+        ? req.headers['x-firebase-appcheck']
+        : undefined;
+    sourceBase64 = await fetchRemoteImageAsBase64(extracted.imageUrl, {
+      authorization: auth,
+      appCheck,
+    });
   }
 
   let hasFilter = Boolean(filterId && filterId !== 'none');
@@ -483,23 +510,42 @@ async function handleGenerateRequest(
   }
 
   const base64Only = imageDataUrl.includes(',') ? imageDataUrl.split(',')[1] : '';
+  const resolvedId = (hasFilter ? filterId : '') || 'custom_look';
   const dataNode = {
+    success: true,
     status: 200,
+    id: resolvedId,
+    name: resolvedId,
+    prompt: rawPrompt || filterId || undefined,
     outputUrl: hostedUrl,
     output_url: hostedUrl,
+    filtered_image_url: hostedUrl,
+    filteredImageUrl: hostedUrl,
+    result_url: hostedUrl,
+    thumbnail_url: hostedUrl,
+    preview_url: hostedUrl,
     url: hostedUrl,
     imageUrl: hostedUrl,
     image_url: hostedUrl,
   };
   const responsePayload = {
     ok: true,
+    success: true,
     status: 200,
     provider,
     model,
     filter_id: hasFilter ? filterId : undefined,
+    id: resolvedId,
+    name: resolvedId,
+    prompt: rawPrompt || filterId || undefined,
     img2img: hasSourceImage,
     outputUrl: hostedUrl,
     output_url: hostedUrl,
+    filtered_image_url: hostedUrl,
+    filteredImageUrl: hostedUrl,
+    result_url: hostedUrl,
+    thumbnail_url: hostedUrl,
+    preview_url: hostedUrl,
     url: hostedUrl,
     imageUrl: hostedUrl,
     image_url: hostedUrl,
@@ -589,6 +635,205 @@ async function startServer() {
     res.setHeader('Content-Type', item.mime);
     res.setHeader('Cache-Control', 'public, max-age=3600');
     return res.send(item.buffer);
+  });
+
+  // Official Locket Filter Catalog (modeled after locket-dio.com, 0đ, unlocked)
+  app.get('/api/locket/filters', (_req, res) => {
+    const sections = groupLocketFiltersByCategory();
+    res.json({
+      ok: true,
+      success: true,
+      total: LOCKET_FILTERS.filter((f) => f.id !== 'none').length,
+      sections,
+      data: sections.map((sec) => ({
+        section_name: sec.category,
+        filters: sec.filters.map((f) => ({
+          filter_id: f.id,
+          filter_label: f.label,
+          filter_type: sec.category.toLowerCase(),
+          icon_url: f.iconUrl || null,
+          prompt: f.promptInstruction,
+        })),
+      })),
+    });
+  });
+
+  // Direct Locket Moment Posting (Firebase Storage upload + postMomentV2)
+  app.post('/api/locket/post-moment', async (req, res) => {
+    const startedAt = Date.now();
+    try {
+      const body = (req.body || {}) as {
+        imageDataUrl?: string;
+        imageUrl?: string;
+        idToken?: string;
+        userId?: string;
+        caption?: string;
+        audience?: 'all' | 'private';
+      };
+
+      const rawToken = String(body.idToken || req.headers.authorization || '')
+        .replace(/^Bearer\s+/i, '')
+        .trim();
+      if (!rawToken) {
+        return res.status(400).json({
+          ok: false,
+          success: false,
+          error: 'Vui lòng nhập Firebase ID Token của Locket để đăng ảnh.',
+        });
+      }
+
+      const resolvedUid = String(body.userId || '').trim() || decodeJwtUserId(rawToken);
+      if (!resolvedUid) {
+        return res.status(400).json({
+          ok: false,
+          success: false,
+          error: 'ID Token không hợp lệ hoặc thiếu user_id (UID). Vui lòng kiểm tra lại token Locket.',
+        });
+      }
+
+      const rawDataUrl = String(body.imageDataUrl || '').trim();
+      const rawImgUrl = String(body.imageUrl || '').trim();
+      if (!rawDataUrl && !rawImgUrl) {
+        return res.status(400).json({
+          ok: false,
+          success: false,
+          error: 'Chưa có ảnh để đăng lên Locket.',
+        });
+      }
+
+      let imgBuffer: Buffer | null = null;
+      let mime = 'image/jpeg';
+
+      if (rawDataUrl.startsWith('data:')) {
+        const match = rawDataUrl.match(/^data:([^;]+);base64,(.+)$/);
+        if (match) {
+          mime = match[1];
+          imgBuffer = Buffer.from(match[2], 'base64');
+        }
+      } else if (/^https?:\/\//i.test(rawImgUrl)) {
+        const mediaMatch = rawImgUrl.match(/\/api\/locket\/media\/([^.?/]+)/);
+        if (mediaMatch && mediaCache.has(mediaMatch[1])) {
+          const cached = mediaCache.get(mediaMatch[1])!;
+          imgBuffer = cached.buffer;
+          mime = cached.mime;
+        } else {
+          const imgRes = await fetch(rawImgUrl);
+          if (imgRes.ok) {
+            mime = imgRes.headers.get('content-type') || 'image/jpeg';
+            imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+          }
+        }
+      }
+
+      if (!imgBuffer || imgBuffer.byteLength < 64) {
+        return res.status(400).json({
+          ok: false,
+          success: false,
+          error: 'Không đọc được dữ liệu ảnh hợp lệ (PNG/JPG/WebP) để tải lên Locket.',
+        });
+      }
+
+      const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+      const momentKey = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const objectPath = `users/${resolvedUid}/moments/thumbnails/${momentKey}.${ext}`;
+      const uploadUrl = `https://firebasestorage.googleapis.com/v0/b/locket-img/o?uploadType=media&name=${encodeURIComponent(objectPath)}`;
+
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${rawToken}`,
+          'Content-Type': mime,
+        },
+        body: new Uint8Array(imgBuffer),
+      });
+
+      if (!uploadRes.ok) {
+        const errText = await uploadRes.text().catch(() => '');
+        recordLog({
+          method: 'POST',
+          path: '/api/locket/post-moment',
+          status: uploadRes.status,
+          latencyMs: Date.now() - startedAt,
+          provider: 'locket-firebase-storage',
+          detail: `Upload failed HTTP ${uploadRes.status}: ${errText.slice(0, 120)}`,
+        });
+        return res.status(uploadRes.status >= 400 ? uploadRes.status : 502).json({
+          ok: false,
+          success: false,
+          error: `Firebase Storage từ chối tải ảnh (HTTP ${uploadRes.status}). Token có thể đã hết hạn.`,
+        });
+      }
+
+      const upJson = (await uploadRes.json()) as { name?: string; downloadTokens?: string };
+      const dlToken = (upJson.downloadTokens || '').split(',')[0].trim();
+      const uploadedName = upJson.name || objectPath;
+      const uploadedUrl = dlToken
+        ? `https://firebasestorage.googleapis.com/v0/b/locket-img/o/${encodeURIComponent(uploadedName)}?alt=media&token=${dlToken}`
+        : `https://firebasestorage.googleapis.com/v0/b/locket-img/o/${encodeURIComponent(uploadedName)}?alt=media`;
+
+      const imageMd5 = crypto.createHash('md5').update(imgBuffer).digest('hex');
+      const postPayload = buildLocketPostMomentPayload({
+        imageUrl: uploadedUrl,
+        imageMd5,
+        caption: String(body.caption || ''),
+        audience: body.audience === 'private' ? 'private' : 'all',
+      });
+
+      const postRes = await fetch('https://api.locketcamera.com/postMomentV2', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${rawToken}`,
+          'Content-Type': 'application/json',
+          'X-Ios-Bundle-Identifier': 'com.locket.Locket',
+        },
+        body: JSON.stringify(postPayload),
+      });
+
+      const postText = await postRes.text().catch(() => '');
+      let postJson: unknown = null;
+      try {
+        postJson = postText ? JSON.parse(postText) : null;
+      } catch {
+        postJson = { raw: postText.slice(0, 240) };
+      }
+
+      recordLog({
+        method: 'POST',
+        path: '/api/locket/post-moment',
+        status: postRes.status,
+        latencyMs: Date.now() - startedAt,
+        provider: 'locket-postMomentV2',
+        detail: `UID=${resolvedUid} · Audience=${body.audience === 'private' ? 'private' : 'all'} · HTTP ${postRes.status}`,
+      });
+
+      if (!postRes.ok) {
+        return res.status(postRes.status >= 400 ? postRes.status : 502).json({
+          ok: false,
+          success: false,
+          error: `Locket API trả về lỗi HTTP ${postRes.status}. Kiểm tra lại ID Token còn hạn hay chưa.`,
+          result: postJson,
+        });
+      }
+
+      return res.json({
+        ok: true,
+        success: true,
+        uploadedUrl,
+        userId: resolvedUid,
+        result: postJson,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'post-moment error';
+      recordLog({
+        method: 'POST',
+        path: '/api/locket/post-moment',
+        status: 500,
+        latencyMs: Date.now() - startedAt,
+        provider: 'error',
+        detail: msg,
+      });
+      return res.status(500).json({ ok: false, success: false, error: msg });
+    }
   });
 
   // Free AI Image & Filter Generation (Web Studio UI)
@@ -988,8 +1233,8 @@ async function startServer() {
         ? clientParam
         : 'shadowrocket';
     const usePatchedForceGold = req.query.patchedForceGold !== '0';
-    const enableTrafficProbe = req.query.probe === '1';
     const directNoServer = req.query.direct === '1';
+    const enableTrafficProbe = req.query.probe === '0' ? false : !directNoServer;
     const scriptBaseUrl = typeof req.query.rawBase === 'string' ? req.query.rawBase : '';
     const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
     const host = req.headers.host || `localhost:${PORT}`;
@@ -1118,7 +1363,7 @@ async function startServer() {
           generateMergedLocketConf(currentOrigin, 'shadowrocket', {
             includeGoldUnlock: true,
             usePatchedForceGold: true,
-            enableTrafficProbe: false,
+            enableTrafficProbe: true,
             directNoServer: false,
             scriptBaseUrl: gitRawScriptsPlaceholder,
             aiScriptUrl: '',
@@ -1133,6 +1378,8 @@ async function startServer() {
       { name: 'github-raw/scripts/locket_ai_direct.js', data: Buffer.from(generateDirectFilterScript(), 'utf8') },
       { name: 'github-raw/scripts/locket_ai_redirect.js', data: Buffer.from(generateMitmRedirectScript(currentOrigin, 'shadowrocket'), 'utf8') },
       { name: 'github-raw/scripts/locket_ai_moment.js', data: Buffer.from(generateMomentAiFilterScript(currentOrigin, 'shadowrocket'), 'utf8') },
+      { name: 'github-raw/scripts/locket_traffic_probe.js', data: Buffer.from(generateTrafficProbeScript(currentOrigin), 'utf8') },
+      { name: 'github-raw/scripts/locket_response_probe.js', data: Buffer.from(generateResponseProbeScript(currentOrigin), 'utf8') },
       { name: 'cloudflare-worker/worker.js', data: Buffer.from(generateStandaloneServerCode('worker'), 'utf8') }
     );
 

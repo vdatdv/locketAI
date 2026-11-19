@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {
   buildEnhancedPrompt,
+  buildLocketPostMomentPayload,
+  decodeJwtUserId,
   DEFAULT_SHADOWROCKET_AI_PATTERN,
   extractLocketGenerateParams,
   generateDirectFilterScript,
@@ -13,6 +15,7 @@ import {
   generateStandaloneServerCode,
   generateTrafficProbeScript,
   getDimensionsForAspectRatio,
+  groupLocketFiltersByCategory,
   isValidServerUrl,
   LOCKET_CAPTIONS,
   LOCKET_FILTERS,
@@ -38,7 +41,7 @@ test('normalizeFilterId and mapFilterIdToPrompt resolve Locket filters, sticker 
   assert.equal(normalizeFilterId('stk_harry_potter'), 'harry_potter');
 
   const crown = mapFilterIdToPrompt('stk_dio_flower_crown');
-  assert.ok(crown.includes('flower crown'));
+  assert.ok(crown.includes('wildflower crown'));
   const pb = mapFilterIdToPrompt('pb_strawberry');
   assert.ok(pb.includes('strawberry photobooth'));
   const combined = mapFilterIdToPrompt('disco_lights', 'girl smiling');
@@ -67,13 +70,36 @@ test('extractLocketGenerateParams extracts filter_id, sticker_id, image_url, ima
   });
   assert.equal(fromBase64.filterId, 'pb_vintage');
   assert.ok(fromBase64.imageBase64.startsWith('data:image/jpeg;base64,'));
+
+  const fromLookAndStorage = extractLocketGenerateParams({
+    data: {
+      look_id: 'okay_wig',
+      user_prompt: 'neon cyberpunk sunglasses',
+      storage_path: 'users/u1/orig.jpg',
+    },
+  });
+  assert.equal(fromLookAndStorage.filterId, 'okay_wig');
+  assert.equal(fromLookAndStorage.prompt, 'neon cyberpunk sunglasses');
+  assert.equal(fromLookAndStorage.storagePath, 'users/u1/orig.jpg');
+  assert.equal(
+    fromLookAndStorage.imageUrl,
+    'https://firebasestorage.googleapis.com/v0/b/locket-img/o/users%2Fu1%2Forig.jpg?alt=media'
+  );
+
+  const fromGsUrl = extractLocketGenerateParams({
+    image_url: 'gs://locket-img/users/u2/selfie.jpg',
+  });
+  assert.equal(
+    fromGsUrl.imageUrl,
+    'https://firebasestorage.googleapis.com/v0/b/locket-img/o/users%2Fu2%2Fselfie.jpg?alt=media'
+  );
 });
 
 test('buildEnhancedPrompt appends style suffix and filter instruction', () => {
   assert.equal(buildEnhancedPrompt('   ', 'ghibli'), '');
   const prompt = buildEnhancedPrompt('chú mèo đáng yêu', 'ghibli', 'cute little cat', 'princess');
   assert.ok(prompt.startsWith('cute little cat,'));
-  assert.ok(prompt.includes('tiara crown'));
+  assert.ok(prompt.includes('tiara'));
   assert.ok(prompt.includes('Ghibli'));
 });
 
@@ -98,6 +124,30 @@ test('DEFAULT_SHADOWROCKET_AI_PATTERN matches generateFilteredImage & filter end
   assert.equal(
     regex.test('https://api.locketcamera.com/v1/photobooth'),
     true
+  );
+  assert.equal(
+    regex.test('https://ai.locketcamera.com/generateFilteredImage'),
+    true
+  );
+  assert.equal(
+    regex.test('https://api.locketcamera.com/createLook'),
+    true
+  );
+  assert.equal(
+    regex.test('https://filters.locketcamera.com/generateLook'),
+    true
+  );
+  assert.equal(
+    regex.test('https://createlook-abc123-uc.a.run.app/'),
+    true
+  );
+  assert.equal(
+    regex.test('https://getfilters-abc123-uc.a.run.app/'),
+    false
+  );
+  assert.equal(
+    regex.test('https://cdn.locketcamera.com/filters/generateLook.jpg'),
+    false
   );
   assert.equal(
     regex.test('https://api.locketcamera.com/getFilters'),
@@ -125,13 +175,17 @@ test('DEFAULT_SHADOWROCKET_AI_PATTERN matches generateFilteredImage & filter end
   );
 });
 
-test('LOCKET_FILTER_UNLOCK_PATTERN covers api.locketcamera.com and cloudfunctions.net except generateFilteredImage', () => {
+test('LOCKET_FILTER_UNLOCK_PATTERN covers Locket & Cloud Functions read/unlock endpoints except generation & moments', () => {
   const regex = new RegExp(LOCKET_FILTER_UNLOCK_PATTERN.replace(/\\\//g, '/'));
   assert.equal(regex.test('https://api.locketcamera.com/getFilters'), true);
+  assert.equal(regex.test('https://api.locketcamera.com/getCustomFilters'), true);
+  assert.equal(regex.test('https://api.locketcamera.com/checkFilterEligibility'), true);
   assert.equal(regex.test('https://us-central1-locket-4252a.cloudfunctions.net/getFilters'), true);
   assert.equal(regex.test('https://api.locketcamera.com/fetchUser'), true);
   assert.equal(regex.test('https://api.locketcamera.com/changeProfileInfo'), true);
   assert.equal(regex.test('https://api.locketcamera.com/generateFilteredImage'), false);
+  assert.equal(regex.test('https://api.locketcamera.com/createLook'), false);
+  assert.equal(regex.test('https://cdn.locketcamera.com/filters/okay_wig.png'), false);
 });
 
 test('URL validation and normalization', () => {
@@ -176,6 +230,11 @@ test('generateFilterUnlockScript unlocks user permissions & strips locks with ze
   assert.equal(parsed.result.data.is_gold, true);
   assert.equal(parsed.result.data.can_use_filters, true);
   assert.equal(parsed.result.data.can_generate_filtered_image, true);
+  assert.equal(parsed.result.data.can_create_custom_filters, true);
+  assert.equal(parsed.result.data.can_create_looks, true);
+  assert.equal(parsed.result.data.allows_custom_filters, true);
+  assert.equal(parsed.result.data.eligible, true);
+  assert.equal(parsed.result.data.custom_filter_credits, 999);
   assert.equal(parsed.result.data.is_locked, false);
   assert.equal(parsed.result.data.requires_gold, false);
   assert.equal(parsed.result.data.remaining_filters, 999);
@@ -273,9 +332,21 @@ test('generateMergedLocketConf includes Gold, filter unlock, generateFilteredIma
   assert.ok(conf.includes('locket_probe_res = type=http-response'));
   assert.ok(conf.includes('-analytics.locketcamera.com'));
   assert.ok(conf.includes('-cdn.locketcamera.com'));
+  assert.ok(conf.includes('*.locketcamera.com'));
   assert.ok(conf.includes('*.a.run.app'));
   assert.ok(conf.includes('us-central1-locket-4252a.cloudfunctions.net'));
   assert.equal(/youtube|googlevideo|hostsvn|phl|phamlong/i.test(conf), false);
+
+  const defaultBackendConf = generateMergedLocketConf('https://free-ai.onrender.com', 'shadowrocket', {
+    includeGoldUnlock: true,
+    usePatchedForceGold: true,
+    directNoServer: false,
+    scriptBaseUrl: 'https://raw.githubusercontent.com/vdatdv/locketAI/main/github-raw/scripts',
+    aiScriptUrl: '',
+  });
+  assert.ok(defaultBackendConf.includes('locket_probe = type=http-request'));
+  assert.ok(defaultBackendConf.includes('locket_traffic_probe.js'));
+  assert.ok(defaultBackendConf.includes('locket_response_probe.js'));
 });
 
 test('generateStandaloneServerCode includes filter prompts and img2img support', () => {
@@ -465,6 +536,20 @@ test('generateTrafficProbeScript avoids /api/locket/ loop and tracks firebaserem
   });
   assert.equal(JSON.stringify(selfLoopDone), '{}');
 
+  let momentsSkippedDone: Record<string, unknown> | undefined;
+  vm.runInNewContext(probeScript, {
+    $request: {
+      url: 'https://api.locketcamera.com/getMomentsV2',
+      method: 'POST',
+      headers: { 'User-Agent': 'Locket/2.0' },
+      body: '{}',
+    },
+    $done: (out: Record<string, unknown>) => {
+      momentsSkippedDone = out;
+    },
+  });
+  assert.equal(JSON.stringify(momentsSkippedDone), '{}');
+
   let probedRemoteConfig = false;
   vm.runInNewContext(probeScript, {
     $request: {
@@ -483,6 +568,65 @@ test('generateTrafficProbeScript avoids /api/locket/ loop and tracks firebaserem
   });
   assert.equal(probedRemoteConfig, true);
 });
+
+test('OFFICIAL_LOCKET_FILTERS includes all 36 official locket-dio filters with practical_magic_2 and iconUrl', () => {
+  const pm2 = LOCKET_FILTERS.find((f) => f.id === 'practical_magic_2');
+  assert.ok(pm2);
+  assert.equal(pm2.category, 'Events');
+  assert.ok(pm2.iconUrl?.startsWith('https://storage.googleapis.com/'));
+  assert.ok(pm2.promptInstruction.includes('vines'));
+
+  const sections = groupLocketFiltersByCategory();
+  assert.ok(sections.some((s) => s.category === 'Events'));
+  assert.ok(sections.some((s) => s.category === 'Goofy'));
+  assert.ok(sections.some((s) => s.category === 'Looks'));
+  assert.ok(sections.some((s) => s.category === 'Celebrate'));
+  assert.ok(sections.some((s) => s.category === 'Cute'));
+  assert.ok(sections.some((s) => s.category === 'Costumes'));
+  assert.ok(sections.some((s) => s.category === 'Holidays'));
+  assert.equal(sections.some((s) => s.category === 'Mặc định'), false);
+
+  const unlockScript = generateFilterUnlockScript();
+  assert.ok(unlockScript.includes('practical_magic_2'));
+});
+
+test('decodeJwtUserId parses user_id/sub from JWT and rejects malformed strings safely', () => {
+  const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ user_id: 'uid_locket_12345', sub: 'uid_locket_12345' })).toString('base64url');
+  const sampleJwt = `Bearer ${header}.${payload}.signature`;
+  assert.equal(decodeJwtUserId(sampleJwt), 'uid_locket_12345');
+  assert.equal(decodeJwtUserId('not-a-jwt'), '');
+  assert.equal(decodeJwtUserId(''), '');
+});
+
+test('buildLocketPostMomentPayload formats Client-Locket-Dio postMomentV2 body with overlays and audience', () => {
+  const fixedDate = new Date('2026-11-18T08:00:00Z');
+  const publicMoment = buildLocketPostMomentPayload({
+    imageUrl: 'https://firebasestorage.googleapis.com/v0/b/locket-img/o/test.jpg?alt=media',
+    imageMd5: 'abc123md5',
+    caption: 'Filter AI test',
+    audience: 'all',
+    now: fixedDate,
+  });
+  assert.equal(publicMoment.data.thumbnail_url, 'https://firebasestorage.googleapis.com/v0/b/locket-img/o/test.jpg?alt=media');
+  assert.equal(publicMoment.data.md5, 'abc123md5');
+  assert.equal(publicMoment.data.sent_to_all, true);
+  assert.equal(publicMoment.data.sent_to_self_only, false);
+  assert.equal(publicMoment.data.update_streak_for_yyyymmdd, '20261118');
+  assert.equal(Array.isArray(publicMoment.data.overlays), true);
+  assert.equal((publicMoment.data.overlays as Array<{ overlay_id: string }>)[0].overlay_id, 'caption:standard');
+
+  const privateMoment = buildLocketPostMomentPayload({
+    imageUrl: 'https://firebasestorage.googleapis.com/v0/b/locket-img/o/priv.jpg?alt=media',
+    imageMd5: 'privmd5',
+    audience: 'private',
+    now: fixedDate,
+  });
+  assert.equal(privateMoment.data.sent_to_all, false);
+  assert.equal(privateMoment.data.sent_to_self_only, true);
+  assert.deepEqual(privateMoment.data.overlays, []);
+});
+
 
 
 

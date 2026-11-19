@@ -1,6 +1,7 @@
 // worker.js — Cloudflare Worker 0đ (Không Sleep, Không Giao Diện Web)
 // Chỉ cần dán 1 file này lên dash.cloudflare.com -> Workers & Pages -> Deploy
 const FILTER_PROMPTS = {
+  practical_magic_2: "lush deep green vines and subtle roses with understated warm glowing fireflies, dreamy enchanted portrait",
   flower_crown: "wearing a delicate fresh pastel flower crown on head, dreamy soft sunlight glow",
   cutesy: "soft rosy blush cheeks, adorable kawaii aesthetic, glowing skin",
   sticker_face: "playful cute pastel face stickers on cheeks, sparkling eyes",
@@ -84,19 +85,28 @@ export default {
     try {
       const raw = await request.json().catch(() => ({}));
       const body = (raw && raw.data && typeof raw.data === "object") ? raw.data : raw;
-      let filterId = String(body.filter_id || body.filterId || body.sticker_id || "").trim().toLowerCase();
+      let filterId = String(body.filter_id || body.filterId || body.look_id || body.lookId || body.sticker_id || "").trim().toLowerCase();
       filterId = filterId.replace(/^stk_dio_/, "").replace(/^stk_/, "");
       const hint = FILTER_PROMPTS[filterId] || (filterId ? filterId.replace(/_/g, " ") + " filter" : "aesthetic portrait");
-      const rawPrompt = String(body.prompt || body.custom_prompt || body.text || "").trim();
+      const rawPrompt = String(body.prompt || body.custom_prompt || body.user_prompt || body.text || "").trim();
       const fullPrompt = [rawPrompt, hint, "authentic candid 35mm portrait"].filter(Boolean).join(", ");
 
       let cleanBase64 = String(body.image_base64 || body.imageBase64 || body.photo_base64 || body.base64 || "")
         .replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "")
         .trim();
 
-      const imgUrlField = String(body.image_url || body.imageUrl || body.source_url || body.photo_url || "");
+      let imgUrlField = String(body.image_url || body.imageUrl || body.source_url || body.photo_url || "");
+      const storagePathField = String(body.storage_path || body.storagePath || body.image_path || "").trim();
+      if (!imgUrlField && storagePathField && storagePathField.includes("/")) {
+        imgUrlField = "https://firebasestorage.googleapis.com/v0/b/locket-img/o/" + encodeURIComponent(storagePathField.replace(/^\/+/, "")) + "?alt=media";
+      }
       if (!cleanBase64 && /^https?:\/\//i.test(imgUrlField)) {
-        const imgRes = await fetch(imgUrlField);
+        const fwdHeaders = {};
+        const auth = request.headers.get("authorization");
+        const appCheck = request.headers.get("x-firebase-appcheck");
+        if (auth) fwdHeaders["Authorization"] = auth;
+        if (appCheck) fwdHeaders["X-Firebase-AppCheck"] = appCheck;
+        const imgRes = await fetch(imgUrlField, { headers: fwdHeaders });
         if (imgRes.ok) cleanBase64 = arrayBufferToBase64(await imgRes.arrayBuffer());
       }
 
@@ -106,12 +116,13 @@ export default {
         outputUrl = await runImg2ImgHorde(fullPrompt, cleanBase64);
       } catch {
         const seed = Math.floor(Math.random() * 1000000);
-        outputUrl = "https://image.pollinations.ai/prompt/" + encodeURIComponent(fullPrompt) + "?width=768&height=1024&model=flux&seed=" + seed + "&nologo=true";
+        const cappedPrompt = fullPrompt.slice(0, 550);
+        outputUrl = "https://image.pollinations.ai/prompt/" + encodeURIComponent(cappedPrompt) + "?width=768&height=1024&model=flux&seed=" + seed + "&nologo=true";
         provider = "pollinations-fallback";
       }
 
-      const dataNode = { status: 200, outputUrl, output_url: outputUrl, url: outputUrl, imageUrl: outputUrl, image_url: outputUrl };
-      const payload = { ok: true, status: 200, provider, filter_id: filterId || undefined, ...dataNode, data: dataNode };
+      const dataNode = { status: 200, id: filterId || "custom_look", name: filterId || "custom_look", outputUrl, output_url: outputUrl, filtered_image_url: outputUrl, filteredImageUrl: outputUrl, result_url: outputUrl, thumbnail_url: outputUrl, preview_url: outputUrl, url: outputUrl, imageUrl: outputUrl, image_url: outputUrl };
+      const payload = { ok: true, status: 200, provider, filter_id: filterId || undefined, prompt: rawPrompt || filterId || undefined, ...dataNode, data: dataNode };
       return Response.json({ ...payload, result: payload }, { status: 200, headers: cors });
     } catch (err) {
       return Response.json({ ok: false, error: err.message }, { status: 500, headers: cors });
