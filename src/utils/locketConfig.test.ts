@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {
+  buildCompactLocketFilterResponse,
   buildEnhancedPrompt,
+  buildGeminiImageEditInstruction,
   buildLocketPostMomentPayload,
   decodeJwtUserId,
   DEFAULT_SHADOWROCKET_AI_PATTERN,
@@ -676,3 +678,26 @@ test('probeOnly mode emits passive probe config without unlock/redirect scripts 
   assert.ok(sentPayload.includes('[REDACTED]'));
   assert.equal(sentPayload.includes('secret123'), false);
 });
+
+test('buildGeminiImageEditInstruction preserves face identity for Img2Img and buildCompactLocketFilterResponse matches Locket v2.73.0 schema', () => {
+  const editPrompt = buildGeminiImageEditInstruction('', 'natural', '', 'flower_crown', true);
+  assert.ok(editPrompt.includes('strictly preserving'));
+  assert.ok(editPrompt.includes('wildflower crown'));
+
+  const genPrompt = buildGeminiImageEditInstruction('sunset portrait', 'ghibli', 'sunset portrait', 'none', false);
+  assert.ok(genPrompt.includes('sunset portrait'));
+  assert.ok(genPrompt.includes('Ghibli'));
+
+  const compact = buildCompactLocketFilterResponse('https://locketai.onrender.com/api/locket/media/123.png');
+  assert.deepEqual(compact, {
+    result: {
+      data: {
+        output_url: 'https://locketai.onrender.com/api/locket/media/123.png',
+      },
+    },
+  });
+
+  const redirectScript = generateMitmRedirectScript('https://locketai.onrender.com', 'shadowrocket');
+  assert.ok(redirectScript.includes('"X-Locket-Compact"'));
+});
+

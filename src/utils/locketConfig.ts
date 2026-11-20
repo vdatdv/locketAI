@@ -591,6 +591,44 @@ export function buildEnhancedPrompt(
   return `${base}, ${style.promptSuffix}`;
 }
 
+export function buildGeminiImageEditInstruction(
+  userPrompt: string,
+  styleId: string,
+  translatedPrompt?: string,
+  filterId?: string,
+  hasSourceImage = true
+): string {
+  const filterPrompt = mapFilterIdToPrompt(filterId, translatedPrompt || userPrompt).trim();
+  const style = AI_STYLE_PRESETS.find((s) => s.id === styleId);
+  const styleHint = style && style.id !== 'natural' ? ` Aesthetic finish: ${style.promptSuffix}.` : '';
+  const coreEffect = filterPrompt || 'subtle flattering portrait enhancement with warm natural lighting';
+
+  if (hasSourceImage) {
+    return [
+      'Edit this exact photo while strictly preserving the person\'s real face, facial identity, eye shape, skin tone, expression, pose, and natural smartphone candid framing.',
+      `Apply the requested transformation seamlessly and photorealistically: ${coreEffect}.`,
+      'Keep lighting, shadows, and textures cohesive with the original photo. Do not add watermarks, borders, or random text unless explicitly requested.',
+      styleHint.trim(),
+    ]
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  return `Create a photorealistic candid smartphone portrait: ${coreEffect}.${styleHint}`.trim();
+}
+
+export function buildCompactLocketFilterResponse(outputUrl: string): {
+  result: { data: { output_url: string } };
+} {
+  return {
+    result: {
+      data: {
+        output_url: outputUrl,
+      },
+    },
+  };
+}
+
 export function normalizeServerUrl(rawUrl: string): string {
   return rawUrl.trim().replace(/\/+$/, '');
 }
@@ -1055,7 +1093,8 @@ if (typeof $response !== "undefined") {
     headers: Object.assign({}, ($request && $request.headers) || {}, {
       "Content-Type": "application/json",
       "Host": "${serverHost}",
-      "X-Locket-Proxy": "QuantumultX"
+      "X-Locket-Proxy": "QuantumultX",
+      "X-Locket-Compact": "1"
     }),
     body: ($request && $request.body) || "{}"
   };
@@ -1115,6 +1154,7 @@ const TARGET_HOST = "${serverHost}";
     fwdHeaders["Host"] = TARGET_HOST;
     fwdHeaders["Content-Type"] = "application/json";
     fwdHeaders["X-Locket-Proxy"] = "${client}";
+    fwdHeaders["X-Locket-Compact"] = "1";
 
     let rawBody = $request.body || "{}";
     try {
