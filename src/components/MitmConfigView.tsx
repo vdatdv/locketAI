@@ -140,7 +140,7 @@ export function MitmConfigView({
     usePatchedForceGold ? '' : '&patchedForceGold=0'
   }${!directNoServer && !enableTrafficProbe ? '&probe=0' : ''}`;
 
-  const probeImportUrl = `${cleanUrl || 'https://your-server.onrender.com'}/Locket.conf?client=${client}&probe=1`;
+  const probeImportUrl = `${cleanUrl || 'https://your-server.onrender.com'}/Locket.conf?client=${client}&probeOnly=1`;
 
   const activeModeInfo = HOST_MODES.find((m) => m.id === hostMode) ?? HOST_MODES[0];
 
@@ -386,7 +386,7 @@ export function MitmConfigView({
           ) : (
             <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3.5 space-y-1.5">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-amber-950">Link Debug Probe (soi request lên API &amp; Nhật ký)</span>
+                <span className="text-xs font-semibold text-amber-950">Link Probe sạch (chỉ soi API Locket gốc · không chặn rửa ảnh)</span>
                 <button
                   type="button"
                   onClick={() => copyText(probeImportUrl, 'probe-url')}

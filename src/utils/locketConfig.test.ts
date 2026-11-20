@@ -627,6 +627,52 @@ test('buildLocketPostMomentPayload formats Client-Locket-Dio postMomentV2 body w
   assert.deepEqual(privateMoment.data.overlays, []);
 });
 
+test('probeOnly mode emits passive probe config without unlock/redirect scripts and excludes firebasestorage binary uploads', () => {
+  const probeOnlyConf = generateMergedLocketConf('https://locketai.onrender.com', 'shadowrocket', {
+    includeGoldUnlock: true,
+    enableTrafficProbe: false,
+    probeOnly: true,
+    aiScriptUrl: '',
+  });
+  assert.ok(probeOnlyConf.includes('locket_probe = type=http-request'));
+  assert.ok(probeOnlyConf.includes('locket_probe_res = type=http-response'));
+  assert.ok(probeOnlyConf.includes('-firebasestorage.googleapis.com'));
+  assert.equal(probeOnlyConf.includes('locketfix8.js'), false);
+  assert.equal(probeOnlyConf.includes('forceGold4.3.js'), false);
+  assert.equal(probeOnlyConf.includes('locket_ai_filter_req'), false);
+  assert.equal(probeOnlyConf.includes('locket_ai_moment_req'), false);
 
+  const probeScript = generateTrafficProbeScript('https://locketai.onrender.com');
+  let skippedPutDone: Record<string, unknown> | undefined;
+  vm.runInNewContext(probeScript, {
+    $request: {
+      url: 'https://firebasestorage.googleapis.com/v0/b/locket-filters/o/filter_inputs%2Fuid%2F123',
+      method: 'PUT',
+      headers: { 'User-Agent': 'Locket/2.0' },
+      body: 'binarydata',
+    },
+    $done: (out: Record<string, unknown>) => {
+      skippedPutDone = out;
+    },
+  });
+  assert.equal(JSON.stringify(skippedPutDone), '{}');
 
-
+  let sentPayload = '';
+  vm.runInNewContext(probeScript, {
+    $request: {
+      url: 'https://api.locketcamera.com/generateFilteredImage',
+      method: 'POST',
+      headers: { 'User-Agent': 'Locket/2.0' },
+      body: JSON.stringify({ data: { filter_id: 'flower_crown', token: 'Bearer secret123' } }),
+    },
+    $httpClient: {
+      post: (opts: { body: string }, cb: () => void) => {
+        sentPayload = opts.body;
+        cb();
+      },
+    },
+    $done: () => {},
+  });
+  assert.ok(sentPayload.includes('[REDACTED]'));
+  assert.equal(sentPayload.includes('secret123'), false);
+});

@@ -1200,12 +1200,15 @@ async function startServer() {
     const kind = String(body.kind || 'req');
     const method = String(body.method || (kind === 'res' ? 'RES' : 'POST'));
     const status = Number(body.status) || 200;
-    const url = String(body.url || '').slice(0, 140);
+    const url = String(body.url || '').slice(0, 180);
     const keys = Array.isArray(body.keys) ? body.keys.join(', ') : '';
-    const preview =
-      kind === 'res' && body.bodyPreview
-        ? String(body.bodyPreview).replace(/\s+/g, ' ').slice(0, 220)
-        : '';
+    const preview = body.bodyPreview
+      ? String(body.bodyPreview)
+          .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [REDACTED]')
+          .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[JWT_REDACTED]')
+          .replace(/\s+/g, ' ')
+          .slice(0, 420)
+      : '';
 
     recordLog({
       method,
@@ -1232,17 +1235,19 @@ async function startServer() {
       clientParam === 'loon' || clientParam === 'surge' || clientParam === 'quantumultx'
         ? clientParam
         : 'shadowrocket';
+    const probeOnly = req.query.probeOnly === '1' || req.query.probeOnly === 'true';
     const usePatchedForceGold = req.query.patchedForceGold !== '0';
-    const directNoServer = req.query.direct === '1';
-    const enableTrafficProbe = req.query.probe === '0' ? false : !directNoServer;
+    const directNoServer = probeOnly ? false : req.query.direct === '1';
+    const enableTrafficProbe = probeOnly ? true : (req.query.probe === '0' ? false : !directNoServer);
     const scriptBaseUrl = typeof req.query.rawBase === 'string' ? req.query.rawBase : '';
     const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
     const host = req.headers.host || `localhost:${PORT}`;
     const origin = `${proto}://${host}`;
     const confBody = generateMergedLocketConf(origin, client, {
-      includeGoldUnlock: true,
+      includeGoldUnlock: !probeOnly,
       usePatchedForceGold,
       enableTrafficProbe,
+      probeOnly,
       directNoServer,
       scriptBaseUrl,
       aiScriptUrl: '',
@@ -1254,7 +1259,7 @@ async function startServer() {
       status: 200,
       latencyMs: Date.now() - startedAt,
       provider: 'config-host',
-      detail: `Served Locket.conf (${client}${directNoServer ? ' · direct-0-server' : ''}${enableTrafficProbe ? ' + probe' : ''})`,
+      detail: `Served Locket.conf (${client}${probeOnly ? ' · probeOnly' : directNoServer ? ' · direct-0-server' : ''}${!probeOnly && enableTrafficProbe ? ' + probe' : ''})`,
     });
 
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -1364,6 +1369,20 @@ async function startServer() {
             includeGoldUnlock: true,
             usePatchedForceGold: true,
             enableTrafficProbe: true,
+            directNoServer: false,
+            scriptBaseUrl: gitRawScriptsPlaceholder,
+            aiScriptUrl: '',
+          }),
+          'utf8'
+        ),
+      },
+      {
+        name: 'github-raw/Locket_ProbeOnly_GitRaw.conf',
+        data: Buffer.from(
+          generateMergedLocketConf(currentOrigin, 'shadowrocket', {
+            includeGoldUnlock: false,
+            enableTrafficProbe: true,
+            probeOnly: true,
             directNoServer: false,
             scriptBaseUrl: gitRawScriptsPlaceholder,
             aiScriptUrl: '',

@@ -1,21 +1,30 @@
 // ============================================================
 // Locket Traffic Probe (Shadowrocket) — Dò URL & Payload thật của app Locket
-// Không chặn hay sửa request, chỉ gửi tên URL + key JSON về tab API & Nhật ký
+// Không chặn hay sửa request, bỏ qua upload nhị phân Firebase Storage để không gây treo
 // ============================================================
 
 const PROBE_URL = "https://locketai.onrender.com/api/locket/mitm-probe";
 const targetUrl = $request.url || "";
+const method = String($request.method || "POST").toUpperCase();
 const ua = $request.headers["User-Agent"] || $request.headers["user-agent"] || "";
 const isTrackedHost =
   targetUrl.includes("locket") ||
   targetUrl.includes("firebaseremoteconfig.googleapis.com") ||
-  targetUrl.includes("firestore.googleapis.com") ||
-  targetUrl.includes("firebasestorage.googleapis.com");
+  targetUrl.includes("firestore.googleapis.com");
+
+function sanitizePreview(str) {
+  return String(str || "")
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]")
+    .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[JWT_REDACTED]")
+    .slice(0, 420);
+}
 
 if (
+  method === "PUT" ||
   targetUrl.includes("/api/locket/") ||
   targetUrl.includes("analytics.locketcamera.com") ||
   targetUrl.includes("cdn.locketcamera.com") ||
+  targetUrl.includes("firebasestorage.googleapis.com") ||
   /getMoments|fetchMoments|getGroupMessages|getLatestMoment/i.test(targetUrl) ||
   (!ua.includes("Locket") && !isTrackedHost)
 ) {
@@ -26,7 +35,7 @@ if (
     const parsed = $request.body ? JSON.parse($request.body) : {};
     const inner = parsed && parsed.data ? parsed.data : parsed;
     if (inner && typeof inner === "object") {
-      keys = Object.keys(inner).slice(0, 12);
+      keys = Object.keys(inner).slice(0, 14);
     }
   } catch (e) {}
 
@@ -36,10 +45,10 @@ if (
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         kind: "req",
-        method: $request.method || "POST",
+        method: method,
         url: targetUrl,
         keys: keys,
-        bodyPreview: ($request.body || "").slice(0, 220)
+        bodyPreview: sanitizePreview($request.body || "")
       }),
       timeout: 2
     },
