@@ -33,7 +33,6 @@ const TARGET_HOST = "locketai.onrender.com";
     fwdHeaders["Host"] = TARGET_HOST;
     fwdHeaders["Content-Type"] = "application/json";
     fwdHeaders["X-Locket-Proxy"] = "shadowrocket";
-    fwdHeaders["X-Locket-Compact"] = "1";
 
     let rawBody = $request.body || "{}";
     try {

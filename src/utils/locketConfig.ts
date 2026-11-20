@@ -591,44 +591,6 @@ export function buildEnhancedPrompt(
   return `${base}, ${style.promptSuffix}`;
 }
 
-export function buildGeminiImageEditInstruction(
-  userPrompt: string,
-  styleId: string,
-  translatedPrompt?: string,
-  filterId?: string,
-  hasSourceImage = true
-): string {
-  const filterPrompt = mapFilterIdToPrompt(filterId, translatedPrompt || userPrompt).trim();
-  const style = AI_STYLE_PRESETS.find((s) => s.id === styleId);
-  const styleHint = style && style.id !== 'natural' ? ` Aesthetic finish: ${style.promptSuffix}.` : '';
-  const coreEffect = filterPrompt || 'subtle flattering portrait enhancement with warm natural lighting';
-
-  if (hasSourceImage) {
-    return [
-      'Edit this exact photo while strictly preserving the person\'s real face, facial identity, eye shape, skin tone, expression, pose, and natural smartphone candid framing.',
-      `Apply the requested transformation seamlessly and photorealistically: ${coreEffect}.`,
-      'Keep lighting, shadows, and textures cohesive with the original photo. Do not add watermarks, borders, or random text unless explicitly requested.',
-      styleHint.trim(),
-    ]
-      .filter(Boolean)
-      .join(' ');
-  }
-
-  return `Create a photorealistic candid smartphone portrait: ${coreEffect}.${styleHint}`.trim();
-}
-
-export function buildCompactLocketFilterResponse(outputUrl: string): {
-  result: { data: { output_url: string } };
-} {
-  return {
-    result: {
-      data: {
-        output_url: outputUrl,
-      },
-    },
-  };
-}
-
 export function normalizeServerUrl(rawUrl: string): string {
   return rawUrl.trim().replace(/\/+$/, '');
 }
@@ -1093,8 +1055,7 @@ if (typeof $response !== "undefined") {
     headers: Object.assign({}, ($request && $request.headers) || {}, {
       "Content-Type": "application/json",
       "Host": "${serverHost}",
-      "X-Locket-Proxy": "QuantumultX",
-      "X-Locket-Compact": "1"
+      "X-Locket-Proxy": "QuantumultX"
     }),
     body: ($request && $request.body) || "{}"
   };
@@ -1154,7 +1115,6 @@ const TARGET_HOST = "${serverHost}";
     fwdHeaders["Host"] = TARGET_HOST;
     fwdHeaders["Content-Type"] = "application/json";
     fwdHeaders["X-Locket-Proxy"] = "${client}";
-    fwdHeaders["X-Locket-Compact"] = "1";
 
     let rawBody = $request.body || "{}";
     try {
@@ -1581,31 +1541,22 @@ export function generateTrafficProbeScript(serverUrl: string): string {
   const cleanUrl = normalizeServerUrl(serverUrl) || 'https://your-free-locket-ai.onrender.com';
   return `// ============================================================
 // Locket Traffic Probe (Shadowrocket) — Dò URL & Payload thật của app Locket
-// Không chặn hay sửa request, bỏ qua upload nhị phân Firebase Storage để không gây treo
+// Không chặn hay sửa request, chỉ gửi tên URL + key JSON về tab API & Nhật ký
 // ============================================================
 
 const PROBE_URL = "${cleanUrl}/api/locket/mitm-probe";
 const targetUrl = $request.url || "";
-const method = String($request.method || "POST").toUpperCase();
 const ua = $request.headers["User-Agent"] || $request.headers["user-agent"] || "";
 const isTrackedHost =
   targetUrl.includes("locket") ||
   targetUrl.includes("firebaseremoteconfig.googleapis.com") ||
-  targetUrl.includes("firestore.googleapis.com");
-
-function sanitizePreview(str) {
-  return String(str || "")
-    .replace(/Bearer\\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]")
-    .replace(/eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+/g, "[JWT_REDACTED]")
-    .slice(0, 420);
-}
+  targetUrl.includes("firestore.googleapis.com") ||
+  targetUrl.includes("firebasestorage.googleapis.com");
 
 if (
-  method === "PUT" ||
   targetUrl.includes("/api/locket/") ||
   targetUrl.includes("analytics.locketcamera.com") ||
   targetUrl.includes("cdn.locketcamera.com") ||
-  targetUrl.includes("firebasestorage.googleapis.com") ||
   /getMoments|fetchMoments|getGroupMessages|getLatestMoment/i.test(targetUrl) ||
   (!ua.includes("Locket") && !isTrackedHost)
 ) {
@@ -1616,7 +1567,7 @@ if (
     const parsed = $request.body ? JSON.parse($request.body) : {};
     const inner = parsed && parsed.data ? parsed.data : parsed;
     if (inner && typeof inner === "object") {
-      keys = Object.keys(inner).slice(0, 14);
+      keys = Object.keys(inner).slice(0, 12);
     }
   } catch (e) {}
 
@@ -1626,10 +1577,10 @@ if (
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         kind: "req",
-        method: method,
+        method: $request.method || "POST",
         url: targetUrl,
         keys: keys,
-        bodyPreview: sanitizePreview($request.body || "")
+        bodyPreview: ($request.body || "").slice(0, 220)
       }),
       timeout: 2
     },
@@ -1644,24 +1595,13 @@ if (
 export function generateResponseProbeScript(serverUrl: string): string {
   const cleanUrl = normalizeServerUrl(serverUrl) || 'https://your-free-locket-ai.onrender.com';
   return `// ============================================================
-// Locket Response Probe (Shadowrocket) — Đọc phản hồi Filter API thật
-// Không sửa response ($done({})), tự ẩn token và gửi cấu trúc JSON về API & Nhật ký
+// Locket Response Probe (Shadowrocket) — Đọc phản hồi getFilters / Filter API
+// Không sửa response ($done({})), chỉ gửi cấu trúc JSON về tab API & Nhật ký
 // ============================================================
 
 const PROBE_URL = "${cleanUrl}/api/locket/mitm-probe";
 const targetUrl = $request.url || "";
-
-function sanitizePreview(str) {
-  return String(str || "")
-    .replace(/Bearer\\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]")
-    .replace(/eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+/g, "[JWT_REDACTED]")
-    .slice(0, 500);
-}
-
-if (
-  targetUrl.includes("/api/locket/") ||
-  targetUrl.includes("firebasestorage.googleapis.com")
-) {
+if (targetUrl.includes("/api/locket/")) {
   $done({});
 } else {
   const status = ($response && ($response.status || $response.statusCode)) || 0;
@@ -1672,7 +1612,7 @@ if (
     const parsed = raw ? JSON.parse(raw) : {};
     const inner = parsed && parsed.result ? parsed.result : parsed;
     if (inner && typeof inner === "object") {
-      keys = Object.keys(inner).slice(0, 14);
+      keys = Object.keys(inner).slice(0, 12);
     }
   } catch (e) {}
 
@@ -1686,7 +1626,7 @@ if (
         method: "RES",
         url: targetUrl,
         keys: keys,
-        bodyPreview: sanitizePreview(raw)
+        bodyPreview: String(raw).slice(0, 700)
       }),
       timeout: 2
     },
@@ -1702,8 +1642,6 @@ export interface ConfMergeOptions {
   includeGoldUnlock: boolean;
   usePatchedForceGold?: boolean;
   enableTrafficProbe?: boolean;
-  probeOnly?: boolean;
-  aiOnly?: boolean;
   directNoServer?: boolean;
   scriptBaseUrl?: string;
   aiScriptUrl: string;
@@ -1717,8 +1655,6 @@ export function generateMergedLocketConf(
     includeGoldUnlock: true,
     usePatchedForceGold: true,
     enableTrafficProbe: false,
-    probeOnly: false,
-    aiOnly: false,
     directNoServer: false,
     scriptBaseUrl: '',
     aiScriptUrl: '',
@@ -1728,11 +1664,8 @@ export function generateMergedLocketConf(
   const cleanServer = normalizeServerUrl(serverUrl) || 'https://your-free-locket-ai.onrender.com';
   const rawBase = normalizeGitRawScriptsUrl(options.scriptBaseUrl || '');
   const scriptOrigin = rawBase || `${cleanServer}/scripts`;
-  const probeOnly = Boolean(options.probeOnly);
-  const aiOnly = !probeOnly && Boolean(options.aiOnly);
-  const directNoServer = probeOnly || aiOnly ? false : Boolean(options.directNoServer);
-  const enableTrafficProbe = probeOnly ? true : aiOnly ? false : (options.enableTrafficProbe ?? !directNoServer);
-  const includeGoldUnlock = probeOnly || aiOnly ? false : Boolean(options.includeGoldUnlock);
+  const directNoServer = Boolean(options.directNoServer);
+  const enableTrafficProbe = options.enableTrafficProbe ?? !directNoServer;
 
   const scriptSrc =
     options.aiScriptUrl.trim() ||
@@ -1760,19 +1693,11 @@ export function generateMergedLocketConf(
     options.usePatchedForceGold !== false
       ? `${scriptOrigin}/forceGold4.3.js`
       : 'https://raw.githubusercontent.com/vdatdv/LocketGold/main/scripts/forceGold4.3.js';
-  const aiPattern = aiOnly
-    ? '^https:\\/\\/api\\.locketcamera\\.com\\/generateFilteredImage.*'
-    : (options.aiPattern || DEFAULT_SHADOWROCKET_AI_PATTERN).trim();
-
-  const probeReqPattern = probeOnly
-    ? '^https:\\/\\/(?!(analytics|cdn)\\.)(?!.*(getMoments|fetchMoments|getGroupMessages|getLatestMoment))([^/]+\\.locketcamera\\.com|[^/]*cloudfunctions\\.net|[^/]*\\.a\\.run\\.app|firebaseremoteconfig\\.googleapis\\.com|firestore\\.googleapis\\.com)\\/.*'
-    : '^https:\\/\\/(?!(analytics|cdn)\\.)(?!.*(getMoments|fetchMoments|getGroupMessages|getLatestMoment|generateFilteredImage|postMoment|createMoment|sendMoment))([^/]+\\.locketcamera\\.com|[^/]*cloudfunctions\\.net|[^/]*\\.a\\.run\\.app|firebaseremoteconfig\\.googleapis\\.com|firestore\\.googleapis\\.com)\\/.*';
-  const probeResPattern =
-    '^https:\\/\\/(?!(analytics|cdn)\\.)(?!.*(getMoments|fetchMoments|getGroupMessages|getLatestMoment))([^/]+\\.locketcamera\\.com|[^/]*cloudfunctions\\.net|[^/]*\\.a\\.run\\.app|firestore\\.googleapis\\.com)\\/.*';
+  const aiPattern = (options.aiPattern || DEFAULT_SHADOWROCKET_AI_PATTERN).trim();
 
   if (client === 'quantumultx') {
     const rewriteLines: string[] = [];
-    if (includeGoldUnlock) {
+    if (options.includeGoldUnlock) {
       rewriteLines.push(
         `^https:\\/\\/api\\.revenuecat\\.com\\/.+\\/(receipts$|subscribers\\/[^/]+$) url script-response-body ${locketFixSrc}`,
         `^https:\\/\\/api\\.revenuecat\\.com\\/.+\\/(receipts|subscribers) url script-request-header ${locketHeaderSrc}`,
@@ -1782,37 +1707,19 @@ export function generateMergedLocketConf(
         `${LOCKET_FILTER_UNLOCK_PATTERN} url script-response-body ${filterUnlockSrc}`
       );
     }
-    if (!probeOnly) {
-      rewriteLines.push(`${aiPattern} url script-analyze-echo-response ${scriptSrc}`);
-    }
+    rewriteLines.push(`${aiPattern} url script-analyze-echo-response ${scriptSrc}`);
 
-    return `# Quantumult X Configuration - ${probeOnly ? 'Passive Probe Only' : aiOnly ? 'Own AI Server Only' : '100% Locket Gold + In-App Filter AI'}
+    return `# Quantumult X Configuration - 100% Locket Gold + In-App Filter AI
 [rewrite_local]
 ${rewriteLines.join('\n')}
 
 [mitm]
-hostname = ${aiOnly ? '-analytics.locketcamera.com, -cdn.locketcamera.com, -firebasestorage.googleapis.com, api.locketcamera.com' : 'api.revenuecat.com, firebaseremoteconfig.googleapis.com, -analytics.locketcamera.com, -cdn.locketcamera.com, -firebasestorage.googleapis.com, api.locketcamera.com, *.locketcamera.com, us-central1-locket-4252a.cloudfunctions.net, *.cloudfunctions.net, *.a.run.app'}
+hostname = api.revenuecat.com, firebaseremoteconfig.googleapis.com, -analytics.locketcamera.com, -cdn.locketcamera.com, api.locketcamera.com, *.locketcamera.com, us-central1-locket-4252a.cloudfunctions.net, *.cloudfunctions.net, *.a.run.app
 `;
   }
 
   const scriptLines: string[] = [];
-  if (!probeOnly) {
-    if (directNoServer) {
-      scriptLines.push(
-        `locket_ai_filter_direct = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`
-      );
-    } else if (aiOnly) {
-      scriptLines.push(
-        `locket_ai_filter_req = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`
-      );
-    } else {
-      scriptLines.push(
-        `locket_ai_filter_req = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`,
-        `locket_ai_moment_req = type=http-request, pattern=${LOCKET_MOMENT_AI_PATTERN}, script-path=${momentAiSrc}, requires-body=true, max-size=-1, timeout=60`
-      );
-    }
-  }
-  if (includeGoldUnlock) {
+  if (options.includeGoldUnlock) {
     scriptLines.push(
       `revenuecat = type=http-response, pattern=^https:\\/\\/api\\.revenuecat\\.com\\/.+\\/(receipts$|subscribers\\/[^/]+$), script-path=${locketFixSrc}, requires-body=true, max-size=-1, timeout=60`,
       `deleteHeader = type=http-request, pattern=^https:\\/\\/api\\.revenuecat\\.com\\/.+\\/(receipts|subscribers), script-path=${locketHeaderSrc}, timeout=60`,
@@ -1824,46 +1731,38 @@ hostname = ${aiOnly ? '-analytics.locketcamera.com, -cdn.locketcamera.com, -fire
   }
   if (enableTrafficProbe) {
     scriptLines.push(
-      `locket_probe = type=http-request, pattern=${probeReqPattern}, script-path=${probeReqSrc}, requires-body=true, max-size=1048576, timeout=5`,
-      `locket_probe_res = type=http-response, pattern=${probeResPattern}, script-path=${probeResSrc}, requires-body=true, max-size=1048576, timeout=5`
+      `locket_probe = type=http-request, pattern=^https:\\/\\/(?!(analytics|cdn)\\.)(?!.*(getMoments|fetchMoments|getGroupMessages|getLatestMoment)).*(locketcamera\\.com|cloudfunctions\\.net|a\\.run\\.app|firebaseremoteconfig\\.googleapis\\.com|firestore\\.googleapis\\.com|firebasestorage\\.googleapis\\.com)\\/.*, script-path=${probeReqSrc}, requires-body=true, max-size=1048576, timeout=5`,
+      `locket_probe_res = type=http-response, pattern=^https:\\/\\/(?!(analytics|cdn)\\.)(?!.*(getMoments|fetchMoments|getGroupMessages|getLatestMoment))([^/]+\\.locketcamera\\.com|[^/]*cloudfunctions\\.net|[^/]*\\.a\\.run\\.app|firestore\\.googleapis\\.com)\\/.*, script-path=${probeResSrc}, requires-body=true, max-size=1048576, timeout=5`
+    );
+  }
+  if (directNoServer) {
+    scriptLines.push(
+      `locket_ai_filter_direct = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`
+    );
+  } else {
+    scriptLines.push(
+      `locket_ai_filter_req = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`,
+      `locket_ai_moment_req = type=http-request, pattern=${LOCKET_MOMENT_AI_PATTERN}, script-path=${momentAiSrc}, requires-body=true, max-size=-1, timeout=60`
     );
   }
 
-  const mitmHosts = aiOnly
-    ? [
-        '-analytics.locketcamera.com',
-        '-cdn.locketcamera.com',
-        '-firebasestorage.googleapis.com',
-        'api.locketcamera.com',
-      ]
-    : [
-        ...(probeOnly ? [] : ['api.revenuecat.com']),
-        'firebaseremoteconfig.googleapis.com',
-        '-analytics.locketcamera.com',
-        '-cdn.locketcamera.com',
-        '-firebasestorage.googleapis.com',
-        'api.locketcamera.com',
-        '*.locketcamera.com',
-        'us-central1-locket-4252a.cloudfunctions.net',
-        '*.cloudfunctions.net',
-        '*.a.run.app',
-      ];
-  if (enableTrafficProbe && !aiOnly) {
-    mitmHosts.push('firestore.googleapis.com');
+  const mitmHosts = [
+    'api.revenuecat.com',
+    'firebaseremoteconfig.googleapis.com',
+    '-analytics.locketcamera.com',
+    '-cdn.locketcamera.com',
+    'api.locketcamera.com',
+    '*.locketcamera.com',
+    'us-central1-locket-4252a.cloudfunctions.net',
+    '*.cloudfunctions.net',
+    '*.a.run.app',
+  ];
+  if (enableTrafficProbe) {
+    mitmHosts.push('firestore.googleapis.com', 'firebasestorage.googleapis.com');
   }
 
-  const modeComment = probeOnly
-    ? 'Probe Only · Chỉ soi API gốc · Không sửa request · Không MITM Firebase Storage'
-    : aiOnly
-      ? 'Own AI Server Only · Chỉ chuyển /generateFilteredImage sang server AI riêng'
-      : directNoServer
-        ? 'Thuần GitHub Raw · 0 Server'
-        : rawBase
-          ? 'GitHub Raw + Backend Img2Img'
-          : 'Self-Hosted';
-
-  return `# ${probeOnly ? 'Locket Passive API Probe' : aiOnly ? 'Locket Own AI Filter Server' : 'Locket Gold + In-App Filter AI'} (${client.toUpperCase()})
-# ${modeComment}
+  return `# Locket Gold + In-App Filter AI (${client.toUpperCase()})
+# 100% thuần Locket (${directNoServer ? 'Thuần GitHub Raw · 0 Server' : rawBase ? 'GitHub Raw + Backend Img2Img' : 'Self-Hosted'})
 [General]
 bypass-system = true
 loglevel = notify

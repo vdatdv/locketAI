@@ -2,9 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {
-  buildCompactLocketFilterResponse,
   buildEnhancedPrompt,
-  buildGeminiImageEditInstruction,
   buildLocketPostMomentPayload,
   decodeJwtUserId,
   DEFAULT_SHADOWROCKET_AI_PATTERN,
@@ -629,100 +627,6 @@ test('buildLocketPostMomentPayload formats Client-Locket-Dio postMomentV2 body w
   assert.deepEqual(privateMoment.data.overlays, []);
 });
 
-test('probeOnly mode emits passive probe config without unlock/redirect scripts and excludes firebasestorage binary uploads', () => {
-  const probeOnlyConf = generateMergedLocketConf('https://locketai.onrender.com', 'shadowrocket', {
-    includeGoldUnlock: true,
-    enableTrafficProbe: false,
-    probeOnly: true,
-    aiScriptUrl: '',
-  });
-  assert.ok(probeOnlyConf.includes('locket_probe = type=http-request'));
-  assert.ok(probeOnlyConf.includes('locket_probe_res = type=http-response'));
-  assert.ok(probeOnlyConf.includes('-firebasestorage.googleapis.com'));
-  assert.equal(probeOnlyConf.includes('locketfix8.js'), false);
-  assert.equal(probeOnlyConf.includes('forceGold4.3.js'), false);
-  assert.equal(probeOnlyConf.includes('locket_ai_filter_req'), false);
-  assert.equal(probeOnlyConf.includes('locket_ai_moment_req'), false);
 
-  const probeScript = generateTrafficProbeScript('https://locketai.onrender.com');
-  let skippedPutDone: Record<string, unknown> | undefined;
-  vm.runInNewContext(probeScript, {
-    $request: {
-      url: 'https://firebasestorage.googleapis.com/v0/b/locket-filters/o/filter_inputs%2Fuid%2F123',
-      method: 'PUT',
-      headers: { 'User-Agent': 'Locket/2.0' },
-      body: 'binarydata',
-    },
-    $done: (out: Record<string, unknown>) => {
-      skippedPutDone = out;
-    },
-  });
-  assert.equal(JSON.stringify(skippedPutDone), '{}');
-
-  let sentPayload = '';
-  vm.runInNewContext(probeScript, {
-    $request: {
-      url: 'https://api.locketcamera.com/generateFilteredImage',
-      method: 'POST',
-      headers: { 'User-Agent': 'Locket/2.0' },
-      body: JSON.stringify({ data: { filter_id: 'flower_crown', token: 'Bearer secret123' } }),
-    },
-    $httpClient: {
-      post: (opts: { body: string }, cb: () => void) => {
-        sentPayload = opts.body;
-        cb();
-      },
-    },
-    $done: () => {},
-  });
-  assert.ok(sentPayload.includes('[REDACTED]'));
-  assert.equal(sentPayload.includes('secret123'), false);
-});
-
-test('buildGeminiImageEditInstruction preserves face identity for Img2Img and buildCompactLocketFilterResponse matches Locket v2.73.0 schema', () => {
-  const editPrompt = buildGeminiImageEditInstruction('', 'natural', '', 'flower_crown', true);
-  assert.ok(editPrompt.includes('strictly preserving'));
-  assert.ok(editPrompt.includes('wildflower crown'));
-
-  const genPrompt = buildGeminiImageEditInstruction('sunset portrait', 'ghibli', 'sunset portrait', 'none', false);
-  assert.ok(genPrompt.includes('sunset portrait'));
-  assert.ok(genPrompt.includes('Ghibli'));
-
-  const compact = buildCompactLocketFilterResponse('https://locketai.onrender.com/api/locket/media/123.png');
-  assert.deepEqual(compact, {
-    result: {
-      data: {
-        output_url: 'https://locketai.onrender.com/api/locket/media/123.png',
-      },
-    },
-  });
-
-  const redirectScript = generateMitmRedirectScript('https://locketai.onrender.com', 'shadowrocket');
-  assert.ok(redirectScript.includes('"X-Locket-Compact"'));
-});
-
-test('locket_ai_filter_req precedes locket_probe without shadowing, and aiOnly mode emits clean single-script config', () => {
-  const fullConf = generateMergedLocketConf('https://locketai.onrender.com', 'shadowrocket', {
-    includeGoldUnlock: true,
-    enableTrafficProbe: true,
-    aiScriptUrl: '',
-  });
-  const aiIdx = fullConf.indexOf('locket_ai_filter_req =');
-  const probeIdx = fullConf.indexOf('locket_probe =');
-  assert.ok(aiIdx > -1 && probeIdx > -1);
-  assert.ok(aiIdx < probeIdx, 'locket_ai_filter_req must come before locket_probe');
-  assert.ok(fullConf.includes('getLatestMoment|generateFilteredImage'));
-
-  const aiOnlyConf = generateMergedLocketConf('https://locketai.onrender.com', 'shadowrocket', {
-    includeGoldUnlock: true,
-    enableTrafficProbe: true,
-    aiOnly: true,
-    aiScriptUrl: '',
-  });
-  assert.ok(aiOnlyConf.includes('locket_ai_filter_req = type=http-request, pattern=^https:\\/\\/api\\.locketcamera\\.com\\/generateFilteredImage.*'));
-  assert.equal(aiOnlyConf.includes('locketfix8.js'), false);
-  assert.equal(aiOnlyConf.includes('locket_probe ='), false);
-  assert.ok(aiOnlyConf.includes('-firebasestorage.googleapis.com'));
-});
 
 

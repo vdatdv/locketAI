@@ -5,9 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import {
-  buildCompactLocketFilterResponse,
   buildEnhancedPrompt,
-  buildGeminiImageEditInstruction,
   buildLocketPostMomentPayload,
   decodeJwtUserId,
   extractLocketGenerateParams,
@@ -213,81 +211,12 @@ async function fetchFromPollinations(
   }
 }
 
-async function generateWithGeminiImage(
-  instruction: string,
-  aspectRatio: AspectRatioOption,
-  sourceBase64?: string,
-  sourceMime = 'image/jpeg'
-): Promise<{ imageDataUrl: string; provider: string }> {
-  const ai = getGeminiClient();
-  if (!ai) {
-    throw new Error('GEMINI_API_KEY not configured');
-  }
-
-  const dataUrlMatch = (sourceBase64 || '').match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
-  const resolvedMime = dataUrlMatch ? dataUrlMatch[1] : sourceMime || 'image/jpeg';
-  const cleanSource = (dataUrlMatch ? dataUrlMatch[2] : sourceBase64 || '').trim();
-  const isImg2Img = cleanSource.length > 32;
-
-  const parts: Array<
-    | { inlineData: { data: string; mimeType: string } }
-    | { text: string }
-  > = [];
-
-  if (isImg2Img) {
-    parts.push({
-      inlineData: {
-        data: cleanSource,
-        mimeType: resolvedMime,
-      },
-    });
-  }
-  parts.push({ text: instruction });
-
-  const response = await ai.models.generateContent({
-    model: 'gemini-3.1-flash-lite-image',
-    contents: { parts },
-    config: {
-      imageConfig: {
-        aspectRatio,
-      },
-    },
-  });
-
-  for (const part of response.candidates?.[0]?.content?.parts ?? []) {
-    if (part.inlineData?.data) {
-      const mime = part.inlineData.mimeType || 'image/png';
-      return {
-        imageDataUrl: `data:${mime};base64,${part.inlineData.data}`,
-        provider: isImg2Img ? 'gemini-3.1-flash-lite-image (img2img)' : 'gemini-3.1-flash-lite-image',
-      };
-    }
-  }
-
-  throw new Error('Gemini Image returned no image data');
-}
-
-function formatGeminiFallbackNotice(err: unknown): string {
-  const msg = err instanceof Error ? err.message : String(err || '');
-  if (/GEMINI_API_KEY not configured/i.test(msg)) {
-    return 'Chưa cấu hình GEMINI_API_KEY trên server; đang dùng engine AI 0đ dự phòng.';
-  }
-  if (/PERMISSION_DENIED|API_KEY_INVALID|403|400/i.test(msg)) {
-    return 'GEMINI_API_KEY chưa hợp lệ hoặc chưa bật quyền; hãy kiểm tra Settings > Secrets hoặc biến GEMINI_API_KEY trên Render. Đang dùng AI 0đ dự phòng.';
-  }
-  if (/RESOURCE_EXHAUSTED|429/i.test(msg)) {
-    return 'Gemini API đạt giới hạn quota (429); kiểm tra Billing trong Settings > Secrets. Đang dùng AI 0đ dự phòng.';
-  }
-  return `Gemini Image tạm bận (${msg.slice(0, 70)}); đã tự chuyển sang AI 0đ dự phòng.`;
-}
-
 async function fetchFromAiHorde(
   enhancedPrompt: string,
   aspectRatio: AspectRatioOption,
   sourceBase64?: string
 ): Promise<{ imageDataUrl: string; provider: string }> {
   // Anonymous key "0000000000" allows free generation (both txt2img and img2img) up to 576px / 25 steps without kudos
-  const hordeApiKey = (process.env.AI_HORDE_API_KEY || '').trim() || '0000000000';
   const hordeDims =
     aspectRatio === '3:4'
       ? { width: 512, height: 640 }
@@ -304,7 +233,7 @@ async function fetchFromAiHorde(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      apikey: hordeApiKey,
+      apikey: '0000000000',
       'Client-Agent': 'LocketFreeAIServer:1.0:web',
     },
     body: JSON.stringify({
@@ -315,7 +244,7 @@ async function fetchFromAiHorde(
         steps: 20,
         n: 1,
         sampler_name: 'k_euler_a',
-        ...(isImg2Img ? { denoising_strength: 0.44 } : {}),
+        ...(isImg2Img ? { denoising_strength: 0.58 } : {}),
       },
       ...(isImg2Img ? { source_image: cleanSource, source_processing: 'img2img' } : {}),
       nsfw: false,
@@ -408,8 +337,8 @@ async function fetchFromPollinationsWithRetry(
 async function fetchRemoteImageAsBase64(
   imageUrl: string,
   authHeaders?: { authorization?: string; appCheck?: string }
-): Promise<{ base64: string; mimeType: string }> {
-  if (!/^https?:\/\//i.test(imageUrl)) return { base64: '', mimeType: 'image/jpeg' };
+): Promise<string> {
+  if (!/^https?:\/\//i.test(imageUrl)) return '';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
   try {
@@ -428,16 +357,12 @@ async function fetchRemoteImageAsBase64(
       signal: controller.signal,
       headers,
     });
-    if (!res.ok) return { base64: '', mimeType: 'image/jpeg' };
-    const rawMime = (res.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
-    const mimeType = rawMime.startsWith('image/') ? rawMime : 'image/jpeg';
+    if (!res.ok) return '';
     const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.byteLength < 128 || buf.byteLength > 10 * 1024 * 1024) {
-      return { base64: '', mimeType };
-    }
-    return { base64: buf.toString('base64'), mimeType };
+    if (buf.byteLength < 128 || buf.byteLength > 10 * 1024 * 1024) return '';
+    return buf.toString('base64');
   } catch {
-    return { base64: '', mimeType: 'image/jpeg' };
+    return '';
   } finally {
     clearTimeout(timer);
   }
@@ -456,19 +381,16 @@ async function handleGenerateRequest(
   let rawPrompt = extracted.prompt;
   const { styleId, aspectRatio, model, originalUrl, bodyKeys } = extracted;
   let sourceBase64 = extracted.imageBase64;
-  let sourceMime = 'image/jpeg';
   if (!sourceBase64 && extracted.imageUrl) {
     const auth = typeof req.headers.authorization === 'string' ? req.headers.authorization : undefined;
     const appCheck =
       typeof req.headers['x-firebase-appcheck'] === 'string'
         ? req.headers['x-firebase-appcheck']
         : undefined;
-    const remoteImg = await fetchRemoteImageAsBase64(extracted.imageUrl, {
+    sourceBase64 = await fetchRemoteImageAsBase64(extracted.imageUrl, {
       authorization: auth,
       appCheck,
     });
-    sourceBase64 = remoteImg.base64;
-    sourceMime = remoteImg.mimeType;
   }
 
   let hasFilter = Boolean(filterId && filterId !== 'none');
@@ -507,74 +429,48 @@ async function handleGenerateRequest(
   const { prompt: promptForModel, translated } = await translatePromptIfNeeded(rawPrompt);
   const enhancedPrompt = buildEnhancedPrompt(rawPrompt, styleId, promptForModel, filterId);
   const hasSourceImage = sourceBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '').length > 32;
-  const geminiInstruction = buildGeminiImageEditInstruction(
-    rawPrompt,
-    styleId,
-    promptForModel,
-    filterId,
-    hasSourceImage
-  );
 
   let imageDataUrl = '';
   let provider = '';
   let notice = '';
 
-  if (getGeminiClient()) {
+  if (hasSourceImage) {
     try {
-      const geminiRes = await generateWithGeminiImage(
-        geminiInstruction,
-        aspectRatio,
-        hasSourceImage ? sourceBase64 : undefined,
-        sourceMime
-      );
-      imageDataUrl = geminiRes.imageDataUrl;
-      provider = geminiRes.provider;
-    } catch (geminiErr) {
-      notice = formatGeminiFallbackNotice(geminiErr);
-    }
-  }
-
-  if (!imageDataUrl) {
-    if (hasSourceImage) {
-      try {
-        const hordeImg2Img = await fetchFromAiHorde(enhancedPrompt, aspectRatio, sourceBase64);
-        imageDataUrl = hordeImg2Img.imageDataUrl;
-        provider = hordeImg2Img.provider;
-      } catch {
-        try {
-          const generated = await fetchFromPollinationsWithRetry(enhancedPrompt, width, height, model);
-          imageDataUrl = generated.imageDataUrl;
-          provider = generated.provider;
-          notice = notice || 'Node Img2Img miễn phí đang quá tải; đã tạo ảnh AI theo mô tả filter.';
-        } catch (fallbackErr) {
-          imageDataUrl = buildOfflinePreviewSvgDataUrl(rawPrompt, width, height, styleId, filterId);
-          provider = 'local-svg-fallback';
-          notice =
-            notice ||
-            (fallbackErr instanceof Error
-              ? `Các node AI miễn phí đang bận (${fallbackErr.message}); đã trả về ảnh xem trước cục bộ.`
-              : 'Không kết nối được dịch vụ ảnh bên ngoài; đã trả về ảnh xem trước cục bộ.');
-        }
-      }
-    } else {
+      const hordeImg2Img = await fetchFromAiHorde(enhancedPrompt, aspectRatio, sourceBase64);
+      imageDataUrl = hordeImg2Img.imageDataUrl;
+      provider = hordeImg2Img.provider;
+    } catch {
       try {
         const generated = await fetchFromPollinationsWithRetry(enhancedPrompt, width, height, model);
         imageDataUrl = generated.imageDataUrl;
         provider = generated.provider;
-      } catch {
-        try {
-          const hordeGenerated = await fetchFromAiHorde(enhancedPrompt, aspectRatio);
-          imageDataUrl = hordeGenerated.imageDataUrl;
-          provider = hordeGenerated.provider;
-        } catch (fallbackErr) {
-          imageDataUrl = buildOfflinePreviewSvgDataUrl(rawPrompt, width, height, styleId, filterId);
-          provider = 'local-svg-fallback';
-          notice =
-            notice ||
-            (fallbackErr instanceof Error
-              ? `Các node AI miễn phí đang bận (${fallbackErr.message}); đã trả về ảnh xem trước cục bộ.`
-              : 'Không kết nối được dịch vụ ảnh bên ngoài; đã trả về ảnh xem trước cục bộ.');
-        }
+        notice = 'Node Img2Img miễn phí đang quá tải; đã tạo ảnh AI theo mô tả filter.';
+      } catch (fallbackErr) {
+        imageDataUrl = buildOfflinePreviewSvgDataUrl(rawPrompt, width, height, styleId, filterId);
+        provider = 'local-svg-fallback';
+        notice =
+          fallbackErr instanceof Error
+            ? `Các node AI miễn phí đang bận (${fallbackErr.message}); đã trả về ảnh xem trước cục bộ.`
+            : 'Không kết nối được dịch vụ ảnh bên ngoài; đã trả về ảnh xem trước cục bộ.';
+      }
+    }
+  } else {
+    try {
+      const generated = await fetchFromPollinationsWithRetry(enhancedPrompt, width, height, model);
+      imageDataUrl = generated.imageDataUrl;
+      provider = generated.provider;
+    } catch {
+      try {
+        const hordeGenerated = await fetchFromAiHorde(enhancedPrompt, aspectRatio);
+        imageDataUrl = hordeGenerated.imageDataUrl;
+        provider = hordeGenerated.provider;
+      } catch (fallbackErr) {
+        imageDataUrl = buildOfflinePreviewSvgDataUrl(rawPrompt, width, height, styleId, filterId);
+        provider = 'local-svg-fallback';
+        notice =
+          fallbackErr instanceof Error
+            ? `Các node AI miễn phí đang bận (${fallbackErr.message}); đã trả về ảnh xem trước cục bộ.`
+            : 'Không kết nối được dịch vụ ảnh bên ngoài; đã trả về ảnh xem trước cục bộ.';
       }
     }
   }
@@ -668,13 +564,6 @@ async function handleGenerateRequest(
     data: dataNode,
   };
 
-  const isCompactProxy =
-    locketInAppMode &&
-    (req.headers['x-locket-compact'] === '1' || String(req.query.compact || '') === '1');
-  if (isCompactProxy) {
-    return res.status(200).json(buildCompactLocketFilterResponse(hostedUrl));
-  }
-
   return res.status(200).json(
     extracted.isCallable || locketInAppMode
       ? { ...responsePayload, result: responsePayload }
@@ -690,10 +579,7 @@ async function startServer() {
   app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
-    res.setHeader(
-      'Access-Control-Allow-Headers',
-      'Content-Type, Authorization, X-Locket-Proxy, X-Locket-Compact'
-    );
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Locket-Proxy');
     if (req.method === 'OPTIONS') {
       res.status(204).end();
       return;
@@ -705,7 +591,7 @@ async function startServer() {
   app.get('/api/locket/health', (req, res) => {
     const startedAt = Date.now();
     const uptimeSec = Math.floor((Date.now() - START_TIME) / 1000);
-    const hasGeminiKey = Boolean(getGeminiClient());
+    const hasGeminiPromptTranslator = Boolean(getGeminiClient());
     const latencyMs = Date.now() - startedAt;
 
     recordLog({
@@ -714,23 +600,17 @@ async function startServer() {
       status: 200,
       latencyMs,
       provider: 'express-server',
-      detail: hasGeminiKey ? 'Health check OK (Gemini Image enabled)' : 'Health check OK (0đ fallback)',
+      detail: 'Health check OK',
     });
 
     res.json({
       ok: true,
-      service: 'Locket AI & Filter Server',
+      service: 'Locket Free AI & Filter Server',
       freeTier: true,
       img2img: true,
-      geminiImageEditing: hasGeminiKey,
       uptimeSec,
-      providers: [
-        ...(hasGeminiKey ? ['gemini-3.1-flash-lite-image'] : []),
-        'ai-horde-img2img',
-        'pollinations-flux',
-        'pollinations-turbo',
-      ],
-      promptEnhancer: hasGeminiKey ? 'gemini-4-hydrogen' : 'rule-based',
+      providers: ['pollinations-flux', 'pollinations-turbo', 'ai-horde-img2img'],
+      promptEnhancer: hasGeminiPromptTranslator ? 'gemini-4-hydrogen' : 'rule-based',
       endpoints: {
         generate: '/api/ai/generate',
         generateFilteredImage: '/generateFilteredImage',
@@ -1032,49 +912,24 @@ async function startServer() {
 
       const { prompt: translatedPrompt } = await translatePromptIfNeeded(customPrompt);
       const enhancedPrompt = buildEnhancedPrompt(customPrompt, 'natural', translatedPrompt, filterId || undefined);
-      const remoteMomentImg = sourceUrl ? await fetchRemoteImageAsBase64(sourceUrl) : { base64: '', mimeType: 'image/jpeg' };
-      const sourceBase64 = remoteMomentImg.base64;
-      const momentInstruction = buildGeminiImageEditInstruction(
-        customPrompt,
-        'natural',
-        translatedPrompt,
-        filterId || undefined,
-        sourceBase64.length > 32
-      );
+      const sourceBase64 = sourceUrl ? await fetchRemoteImageAsBase64(sourceUrl) : '';
 
       let imageDataUrl = '';
       let provider = '';
-      if (getGeminiClient()) {
+      if (sourceBase64.length > 32) {
         try {
-          const geminiRes = await generateWithGeminiImage(
-            momentInstruction,
-            '3:4',
-            sourceBase64.length > 32 ? sourceBase64 : undefined,
-            remoteMomentImg.mimeType
-          );
-          imageDataUrl = geminiRes.imageDataUrl;
-          provider = geminiRes.provider;
+          const hordeRes = await fetchFromAiHorde(enhancedPrompt, '3:4', sourceBase64);
+          imageDataUrl = hordeRes.imageDataUrl;
+          provider = hordeRes.provider;
         } catch {
-          // Fall back to 0đ Img2Img pipeline below
+          const fallbackRes = await fetchFromPollinationsWithRetry(enhancedPrompt, 768, 1024, 'flux');
+          imageDataUrl = fallbackRes.imageDataUrl;
+          provider = fallbackRes.provider;
         }
-      }
-
-      if (!imageDataUrl) {
-        if (sourceBase64.length > 32) {
-          try {
-            const hordeRes = await fetchFromAiHorde(enhancedPrompt, '3:4', sourceBase64);
-            imageDataUrl = hordeRes.imageDataUrl;
-            provider = hordeRes.provider;
-          } catch {
-            const fallbackRes = await fetchFromPollinationsWithRetry(enhancedPrompt, 768, 1024, 'flux');
-            imageDataUrl = fallbackRes.imageDataUrl;
-            provider = fallbackRes.provider;
-          }
-        } else {
-          const genRes = await fetchFromPollinationsWithRetry(enhancedPrompt, 768, 1024, 'flux');
-          imageDataUrl = genRes.imageDataUrl;
-          provider = genRes.provider;
-        }
+      } else {
+        const genRes = await fetchFromPollinationsWithRetry(enhancedPrompt, 768, 1024, 'flux');
+        imageDataUrl = genRes.imageDataUrl;
+        provider = genRes.provider;
       }
 
       const { mediaId, ext } = storeMediaInCache(imageDataUrl);
@@ -1345,15 +1200,12 @@ async function startServer() {
     const kind = String(body.kind || 'req');
     const method = String(body.method || (kind === 'res' ? 'RES' : 'POST'));
     const status = Number(body.status) || 200;
-    const url = String(body.url || '').slice(0, 180);
+    const url = String(body.url || '').slice(0, 140);
     const keys = Array.isArray(body.keys) ? body.keys.join(', ') : '';
-    const preview = body.bodyPreview
-      ? String(body.bodyPreview)
-          .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [REDACTED]')
-          .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[JWT_REDACTED]')
-          .replace(/\s+/g, ' ')
-          .slice(0, 420)
-      : '';
+    const preview =
+      kind === 'res' && body.bodyPreview
+        ? String(body.bodyPreview).replace(/\s+/g, ' ').slice(0, 220)
+        : '';
 
     recordLog({
       method,
@@ -1380,21 +1232,17 @@ async function startServer() {
       clientParam === 'loon' || clientParam === 'surge' || clientParam === 'quantumultx'
         ? clientParam
         : 'shadowrocket';
-    const probeOnly = req.query.probeOnly === '1' || req.query.probeOnly === 'true';
-    const aiOnly = !probeOnly && (req.query.aiOnly === '1' || req.query.aiOnly === 'true');
     const usePatchedForceGold = req.query.patchedForceGold !== '0';
-    const directNoServer = probeOnly || aiOnly ? false : req.query.direct === '1';
-    const enableTrafficProbe = probeOnly ? true : aiOnly ? false : (req.query.probe === '0' ? false : !directNoServer);
+    const directNoServer = req.query.direct === '1';
+    const enableTrafficProbe = req.query.probe === '0' ? false : !directNoServer;
     const scriptBaseUrl = typeof req.query.rawBase === 'string' ? req.query.rawBase : '';
     const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
     const host = req.headers.host || `localhost:${PORT}`;
     const origin = `${proto}://${host}`;
     const confBody = generateMergedLocketConf(origin, client, {
-      includeGoldUnlock: !probeOnly && !aiOnly,
+      includeGoldUnlock: true,
       usePatchedForceGold,
       enableTrafficProbe,
-      probeOnly,
-      aiOnly,
       directNoServer,
       scriptBaseUrl,
       aiScriptUrl: '',
@@ -1406,7 +1254,7 @@ async function startServer() {
       status: 200,
       latencyMs: Date.now() - startedAt,
       provider: 'config-host',
-      detail: `Served Locket.conf (${client}${probeOnly ? ' · probeOnly' : aiOnly ? ' · aiOnly' : directNoServer ? ' · direct-0-server' : ''}${!probeOnly && !aiOnly && enableTrafficProbe ? ' + probe' : ''})`,
+      detail: `Served Locket.conf (${client}${directNoServer ? ' · direct-0-server' : ''}${enableTrafficProbe ? ' + probe' : ''})`,
     });
 
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -1516,34 +1364,6 @@ async function startServer() {
             includeGoldUnlock: true,
             usePatchedForceGold: true,
             enableTrafficProbe: true,
-            directNoServer: false,
-            scriptBaseUrl: gitRawScriptsPlaceholder,
-            aiScriptUrl: '',
-          }),
-          'utf8'
-        ),
-      },
-      {
-        name: 'github-raw/Locket_ProbeOnly_GitRaw.conf',
-        data: Buffer.from(
-          generateMergedLocketConf(currentOrigin, 'shadowrocket', {
-            includeGoldUnlock: false,
-            enableTrafficProbe: true,
-            probeOnly: true,
-            directNoServer: false,
-            scriptBaseUrl: gitRawScriptsPlaceholder,
-            aiScriptUrl: '',
-          }),
-          'utf8'
-        ),
-      },
-      {
-        name: 'github-raw/Locket_AIOnly_GitRaw.conf',
-        data: Buffer.from(
-          generateMergedLocketConf(currentOrigin, 'shadowrocket', {
-            includeGoldUnlock: false,
-            enableTrafficProbe: false,
-            aiOnly: true,
             directNoServer: false,
             scriptBaseUrl: gitRawScriptsPlaceholder,
             aiScriptUrl: '',
