@@ -1381,18 +1381,20 @@ async function startServer() {
         ? clientParam
         : 'shadowrocket';
     const probeOnly = req.query.probeOnly === '1' || req.query.probeOnly === 'true';
+    const aiOnly = !probeOnly && (req.query.aiOnly === '1' || req.query.aiOnly === 'true');
     const usePatchedForceGold = req.query.patchedForceGold !== '0';
-    const directNoServer = probeOnly ? false : req.query.direct === '1';
-    const enableTrafficProbe = probeOnly ? true : (req.query.probe === '0' ? false : !directNoServer);
+    const directNoServer = probeOnly || aiOnly ? false : req.query.direct === '1';
+    const enableTrafficProbe = probeOnly ? true : aiOnly ? false : (req.query.probe === '0' ? false : !directNoServer);
     const scriptBaseUrl = typeof req.query.rawBase === 'string' ? req.query.rawBase : '';
     const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
     const host = req.headers.host || `localhost:${PORT}`;
     const origin = `${proto}://${host}`;
     const confBody = generateMergedLocketConf(origin, client, {
-      includeGoldUnlock: !probeOnly,
+      includeGoldUnlock: !probeOnly && !aiOnly,
       usePatchedForceGold,
       enableTrafficProbe,
       probeOnly,
+      aiOnly,
       directNoServer,
       scriptBaseUrl,
       aiScriptUrl: '',
@@ -1404,7 +1406,7 @@ async function startServer() {
       status: 200,
       latencyMs: Date.now() - startedAt,
       provider: 'config-host',
-      detail: `Served Locket.conf (${client}${probeOnly ? ' · probeOnly' : directNoServer ? ' · direct-0-server' : ''}${!probeOnly && enableTrafficProbe ? ' + probe' : ''})`,
+      detail: `Served Locket.conf (${client}${probeOnly ? ' · probeOnly' : aiOnly ? ' · aiOnly' : directNoServer ? ' · direct-0-server' : ''}${!probeOnly && !aiOnly && enableTrafficProbe ? ' + probe' : ''})`,
     });
 
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -1528,6 +1530,20 @@ async function startServer() {
             includeGoldUnlock: false,
             enableTrafficProbe: true,
             probeOnly: true,
+            directNoServer: false,
+            scriptBaseUrl: gitRawScriptsPlaceholder,
+            aiScriptUrl: '',
+          }),
+          'utf8'
+        ),
+      },
+      {
+        name: 'github-raw/Locket_AIOnly_GitRaw.conf',
+        data: Buffer.from(
+          generateMergedLocketConf(currentOrigin, 'shadowrocket', {
+            includeGoldUnlock: false,
+            enableTrafficProbe: false,
+            aiOnly: true,
             directNoServer: false,
             scriptBaseUrl: gitRawScriptsPlaceholder,
             aiScriptUrl: '',

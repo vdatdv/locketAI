@@ -701,3 +701,28 @@ test('buildGeminiImageEditInstruction preserves face identity for Img2Img and bu
   assert.ok(redirectScript.includes('"X-Locket-Compact"'));
 });
 
+test('locket_ai_filter_req precedes locket_probe without shadowing, and aiOnly mode emits clean single-script config', () => {
+  const fullConf = generateMergedLocketConf('https://locketai.onrender.com', 'shadowrocket', {
+    includeGoldUnlock: true,
+    enableTrafficProbe: true,
+    aiScriptUrl: '',
+  });
+  const aiIdx = fullConf.indexOf('locket_ai_filter_req =');
+  const probeIdx = fullConf.indexOf('locket_probe =');
+  assert.ok(aiIdx > -1 && probeIdx > -1);
+  assert.ok(aiIdx < probeIdx, 'locket_ai_filter_req must come before locket_probe');
+  assert.ok(fullConf.includes('getLatestMoment|generateFilteredImage'));
+
+  const aiOnlyConf = generateMergedLocketConf('https://locketai.onrender.com', 'shadowrocket', {
+    includeGoldUnlock: true,
+    enableTrafficProbe: true,
+    aiOnly: true,
+    aiScriptUrl: '',
+  });
+  assert.ok(aiOnlyConf.includes('locket_ai_filter_req = type=http-request, pattern=^https:\\/\\/api\\.locketcamera\\.com\\/generateFilteredImage.*'));
+  assert.equal(aiOnlyConf.includes('locketfix8.js'), false);
+  assert.equal(aiOnlyConf.includes('locket_probe ='), false);
+  assert.ok(aiOnlyConf.includes('-firebasestorage.googleapis.com'));
+});
+
+

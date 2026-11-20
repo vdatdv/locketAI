@@ -1703,6 +1703,7 @@ export interface ConfMergeOptions {
   usePatchedForceGold?: boolean;
   enableTrafficProbe?: boolean;
   probeOnly?: boolean;
+  aiOnly?: boolean;
   directNoServer?: boolean;
   scriptBaseUrl?: string;
   aiScriptUrl: string;
@@ -1717,6 +1718,7 @@ export function generateMergedLocketConf(
     usePatchedForceGold: true,
     enableTrafficProbe: false,
     probeOnly: false,
+    aiOnly: false,
     directNoServer: false,
     scriptBaseUrl: '',
     aiScriptUrl: '',
@@ -1727,9 +1729,10 @@ export function generateMergedLocketConf(
   const rawBase = normalizeGitRawScriptsUrl(options.scriptBaseUrl || '');
   const scriptOrigin = rawBase || `${cleanServer}/scripts`;
   const probeOnly = Boolean(options.probeOnly);
-  const directNoServer = probeOnly ? false : Boolean(options.directNoServer);
-  const enableTrafficProbe = probeOnly ? true : (options.enableTrafficProbe ?? !directNoServer);
-  const includeGoldUnlock = probeOnly ? false : Boolean(options.includeGoldUnlock);
+  const aiOnly = !probeOnly && Boolean(options.aiOnly);
+  const directNoServer = probeOnly || aiOnly ? false : Boolean(options.directNoServer);
+  const enableTrafficProbe = probeOnly ? true : aiOnly ? false : (options.enableTrafficProbe ?? !directNoServer);
+  const includeGoldUnlock = probeOnly || aiOnly ? false : Boolean(options.includeGoldUnlock);
 
   const scriptSrc =
     options.aiScriptUrl.trim() ||
@@ -1757,10 +1760,13 @@ export function generateMergedLocketConf(
     options.usePatchedForceGold !== false
       ? `${scriptOrigin}/forceGold4.3.js`
       : 'https://raw.githubusercontent.com/vdatdv/LocketGold/main/scripts/forceGold4.3.js';
-  const aiPattern = (options.aiPattern || DEFAULT_SHADOWROCKET_AI_PATTERN).trim();
+  const aiPattern = aiOnly
+    ? '^https:\\/\\/api\\.locketcamera\\.com\\/generateFilteredImage.*'
+    : (options.aiPattern || DEFAULT_SHADOWROCKET_AI_PATTERN).trim();
 
-  const probeReqPattern =
-    '^https:\\/\\/(?!(analytics|cdn)\\.)(?!.*(getMoments|fetchMoments|getGroupMessages|getLatestMoment))([^/]+\\.locketcamera\\.com|[^/]*cloudfunctions\\.net|[^/]*\\.a\\.run\\.app|firebaseremoteconfig\\.googleapis\\.com|firestore\\.googleapis\\.com)\\/.*';
+  const probeReqPattern = probeOnly
+    ? '^https:\\/\\/(?!(analytics|cdn)\\.)(?!.*(getMoments|fetchMoments|getGroupMessages|getLatestMoment))([^/]+\\.locketcamera\\.com|[^/]*cloudfunctions\\.net|[^/]*\\.a\\.run\\.app|firebaseremoteconfig\\.googleapis\\.com|firestore\\.googleapis\\.com)\\/.*'
+    : '^https:\\/\\/(?!(analytics|cdn)\\.)(?!.*(getMoments|fetchMoments|getGroupMessages|getLatestMoment|generateFilteredImage|postMoment|createMoment|sendMoment))([^/]+\\.locketcamera\\.com|[^/]*cloudfunctions\\.net|[^/]*\\.a\\.run\\.app|firebaseremoteconfig\\.googleapis\\.com|firestore\\.googleapis\\.com)\\/.*';
   const probeResPattern =
     '^https:\\/\\/(?!(analytics|cdn)\\.)(?!.*(getMoments|fetchMoments|getGroupMessages|getLatestMoment))([^/]+\\.locketcamera\\.com|[^/]*cloudfunctions\\.net|[^/]*\\.a\\.run\\.app|firestore\\.googleapis\\.com)\\/.*';
 
@@ -1780,16 +1786,32 @@ export function generateMergedLocketConf(
       rewriteLines.push(`${aiPattern} url script-analyze-echo-response ${scriptSrc}`);
     }
 
-    return `# Quantumult X Configuration - ${probeOnly ? 'Passive Probe Only' : '100% Locket Gold + In-App Filter AI'}
+    return `# Quantumult X Configuration - ${probeOnly ? 'Passive Probe Only' : aiOnly ? 'Own AI Server Only' : '100% Locket Gold + In-App Filter AI'}
 [rewrite_local]
 ${rewriteLines.join('\n')}
 
 [mitm]
-hostname = api.revenuecat.com, firebaseremoteconfig.googleapis.com, -analytics.locketcamera.com, -cdn.locketcamera.com, -firebasestorage.googleapis.com, api.locketcamera.com, *.locketcamera.com, us-central1-locket-4252a.cloudfunctions.net, *.cloudfunctions.net, *.a.run.app
+hostname = ${aiOnly ? '-analytics.locketcamera.com, -cdn.locketcamera.com, -firebasestorage.googleapis.com, api.locketcamera.com' : 'api.revenuecat.com, firebaseremoteconfig.googleapis.com, -analytics.locketcamera.com, -cdn.locketcamera.com, -firebasestorage.googleapis.com, api.locketcamera.com, *.locketcamera.com, us-central1-locket-4252a.cloudfunctions.net, *.cloudfunctions.net, *.a.run.app'}
 `;
   }
 
   const scriptLines: string[] = [];
+  if (!probeOnly) {
+    if (directNoServer) {
+      scriptLines.push(
+        `locket_ai_filter_direct = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`
+      );
+    } else if (aiOnly) {
+      scriptLines.push(
+        `locket_ai_filter_req = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`
+      );
+    } else {
+      scriptLines.push(
+        `locket_ai_filter_req = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`,
+        `locket_ai_moment_req = type=http-request, pattern=${LOCKET_MOMENT_AI_PATTERN}, script-path=${momentAiSrc}, requires-body=true, max-size=-1, timeout=60`
+      );
+    }
+  }
   if (includeGoldUnlock) {
     scriptLines.push(
       `revenuecat = type=http-response, pattern=^https:\\/\\/api\\.revenuecat\\.com\\/.+\\/(receipts$|subscribers\\/[^/]+$), script-path=${locketFixSrc}, requires-body=true, max-size=-1, timeout=60`,
@@ -1806,44 +1828,41 @@ hostname = api.revenuecat.com, firebaseremoteconfig.googleapis.com, -analytics.l
       `locket_probe_res = type=http-response, pattern=${probeResPattern}, script-path=${probeResSrc}, requires-body=true, max-size=1048576, timeout=5`
     );
   }
-  if (!probeOnly) {
-    if (directNoServer) {
-      scriptLines.push(
-        `locket_ai_filter_direct = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`
-      );
-    } else {
-      scriptLines.push(
-        `locket_ai_filter_req = type=http-request, pattern=${aiPattern}, script-path=${scriptSrc}, requires-body=true, max-size=-1, timeout=60`,
-        `locket_ai_moment_req = type=http-request, pattern=${LOCKET_MOMENT_AI_PATTERN}, script-path=${momentAiSrc}, requires-body=true, max-size=-1, timeout=60`
-      );
-    }
-  }
 
-  const mitmHosts = [
-    ...(probeOnly ? [] : ['api.revenuecat.com']),
-    'firebaseremoteconfig.googleapis.com',
-    '-analytics.locketcamera.com',
-    '-cdn.locketcamera.com',
-    '-firebasestorage.googleapis.com',
-    'api.locketcamera.com',
-    '*.locketcamera.com',
-    'us-central1-locket-4252a.cloudfunctions.net',
-    '*.cloudfunctions.net',
-    '*.a.run.app',
-  ];
-  if (enableTrafficProbe) {
+  const mitmHosts = aiOnly
+    ? [
+        '-analytics.locketcamera.com',
+        '-cdn.locketcamera.com',
+        '-firebasestorage.googleapis.com',
+        'api.locketcamera.com',
+      ]
+    : [
+        ...(probeOnly ? [] : ['api.revenuecat.com']),
+        'firebaseremoteconfig.googleapis.com',
+        '-analytics.locketcamera.com',
+        '-cdn.locketcamera.com',
+        '-firebasestorage.googleapis.com',
+        'api.locketcamera.com',
+        '*.locketcamera.com',
+        'us-central1-locket-4252a.cloudfunctions.net',
+        '*.cloudfunctions.net',
+        '*.a.run.app',
+      ];
+  if (enableTrafficProbe && !aiOnly) {
     mitmHosts.push('firestore.googleapis.com');
   }
 
   const modeComment = probeOnly
     ? 'Probe Only · Chỉ soi API gốc · Không sửa request · Không MITM Firebase Storage'
-    : directNoServer
-      ? 'Thuần GitHub Raw · 0 Server'
-      : rawBase
-        ? 'GitHub Raw + Backend Img2Img'
-        : 'Self-Hosted';
+    : aiOnly
+      ? 'Own AI Server Only · Chỉ chuyển /generateFilteredImage sang server AI riêng'
+      : directNoServer
+        ? 'Thuần GitHub Raw · 0 Server'
+        : rawBase
+          ? 'GitHub Raw + Backend Img2Img'
+          : 'Self-Hosted';
 
-  return `# ${probeOnly ? 'Locket Passive API Probe' : 'Locket Gold + In-App Filter AI'} (${client.toUpperCase()})
+  return `# ${probeOnly ? 'Locket Passive API Probe' : aiOnly ? 'Locket Own AI Filter Server' : 'Locket Gold + In-App Filter AI'} (${client.toUpperCase()})
 # ${modeComment}
 [General]
 bypass-system = true
